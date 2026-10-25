@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cấu hình DeepSeek Tự Điền Đơn</title>
+  <style>
+    * { box-sizing: border-box; font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+    body { margin: 0; padding: 24px; background: #f5f6f8; color: #222; }
+    .wrap { max-width: 720px; margin: 0 auto; background: #fff; border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,.08); padding: 24px; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p.desc { color: #666; font-size: 13px; margin: 0 0 20px; }
+    label { display: block; font-weight: 600; font-size: 13px; margin: 16px 0 6px; }
+    input[type=text], input[type=password], textarea, select {
+      width: 100%; padding: 10px 12px; border: 1px solid #ccd2da; border-radius: 6px;
+      font-size: 13px; outline: none;
+    }
+    input:focus, textarea:focus, select:focus { border-color: #2591ff; }
+    textarea { resize: vertical; min-height: 120px; font-family: ui-monospace, Consolas, monospace; }
+    .hint { font-size: 12px; color: #8a8f98; margin-top: 4px; }
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+    button { margin-top: 20px; background: #2591ff; color: #fff; border: 0;
+             padding: 10px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+    button:hover { background: #1278e0; }
+    .status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+    .ok { color: #16a34a; } .err { color: #dc2626; }
+    .divider { height: 1px; background: #eee; margin: 22px 0; }
+    .account-box { margin-top: 12px; padding: 12px 14px; border-radius: 8px; font-size: 13px;
+                   background: #f0f9ff; border: 1px solid #bae6fd; line-height: 1.6; }
+    .account-box.err { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .account-box .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+                          font-size: 12px; font-weight: 600; }
+    .account-box .live { background: #dcfce7; color: #166534; }
+    .account-box .dead { background: #fee2e2; color: #991b1b; }
+    .account-box table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .account-box td { padding: 3px 6px; border-top: 1px solid #e0f2fe; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Cấu hình DeepSeek Tự Điền Đơn</h1>
+    <p class="desc">Nhập API Token DeepSeek và các thiết lập để extension đọc chat và tự điền form đơn hàng.</p>
+
+    <label for="apiToken">API Token DeepSeek</label>
+    <input type="password" id="apiToken" placeholder="sk-..." autocomplete="off" />
+    <div class="hint">Lấy tại <b>platform.deepseek.com</b> → API Keys. Token chỉ lưu trong trình duyệt của bạn.</div>
+
+    <button id="check" style="background:#0ea5e9; margin-top:10px;">Kiểm tra tài khoản &amp; số dư</button>
+    <div id="account" class="account-box" style="display:none;"></div>
+
+    <div class="row">
+      <div>
+        <label for="model">Model</label>
+        <select id="model">
+          <option value="deepseek-chat">deepseek-chat</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+        </select>
+      </div>
+      <div>
+        <label for="msgCount">Số tin nhắn gần nhất đọc</label>
+        <input type="text" id="msgCount" placeholder="3" />
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="divider"></div>
+
+    <label for="promoHCM">Mã khuyến mại HVC — đơn ở Hồ Chí Minh</label>
+    <input type="text" id="promoHCM" placeholder="VD: VOCMKT257_Oct_AllTier 4_10%" autocomplete="off" />
+    <div class="hint">Nhập tên (hoặc một phần tên) mã KM dùng cho đơn giao trong TP.HCM. Để trống nếu không dùng.</div>
+
+    <label for="promoOther">Mã khuyến mại HVC — đơn ngoại tỉnh</label>
+    <input type="text" id="promoOther" placeholder="VD: VOCMKT257_Oct_Multi 3PLsPromoted_25%" autocomplete="off" />
+    <div class="hint">Nhập tên (hoặc một phần tên) mã KM dùng cho đơn ngoài TP.HCM. Để trống nếu không dùng.</div>
+
+    <label for="hcmProvinces">Tỉnh/TP tính mã KM NHƯ Hồ Chí Minh</label>
+    <input type="text" id="hcmProvinces" placeholder="VD: Bình Dương, Bà Rịa - Vũng Tàu, Đồng Nai, Long An" autocomplete="off" />
+    <div class="hint">Các tỉnh lân cận được áp dụng mã KM giống HCM. Ngăn cách bằng dấu phẩy. Để trống nếu chỉ áp cho HCM.</div>
+
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Thông báo Telegram (tự động quét đơn mới)</h1>
+
+    <label><input type="checkbox" id="tgEnabled" style="width:auto;margin-right:6px;" />Bật tự động quét hội thoại chưa đọc mỗi 3 phút</label>
+
+    <label for="tgToken">Telegram Bot Token</label>
+    <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." autocomplete="off" />
+    <div class="hint">Tạo bot qua <b>@BotFather</b> trên Telegram → lấy token.</div>
+
+    <label for="tgChatId">Telegram Chat ID</label>
+    <input type="text" id="tgChatId" placeholder="VD: 123456789 hoặc -100123..." autocomplete="off" />
+    <div class="hint">Chat ID của bạn/nhóm nhận thông báo. Lấy qua bot <b>@userinfobot</b>.</div>
+
+    <button id="tgTest" style="background:#229ED9; margin-top:10px;">Gửi tin nhắn test Telegram</button>
+    <div class="status" id="tgStatus"></div>
+
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Lên đơn tự động từ Telegram (Cloudflare Worker)</h1>
+    <p class="desc">Bấm nút "Lên đơn tự động" trên điện thoại → Worker nhận lệnh → extension tự lên đơn. Cần máy tính mở sẵn trang vpage.nhanh.vn và đã đăng nhập.</p>
+
+    <label><input type="checkbox" id="autoFillEnabled" style="width:auto;margin-right:6px;" />Bật nhận lệnh lên đơn tự động từ Telegram</label>
+
+    <label for="workerUrl">Cloudflare Worker URL</label>
+    <input type="text" id="workerUrl" placeholder="https://lendon-telegram-bridge.<tài_khoản>.workers.dev" autocomplete="off" />
+    <div class="hint">URL Worker sau khi deploy (không có dấu / ở cuối).</div>
+
+    <label for="pullSecret">Pull Secret</label>
+    <input type="password" id="pullSecret" placeholder="chuỗi bí mật trùng với PULL_SECRET của Worker" autocomplete="off" />
+    <div class="hint">Phải trùng với biến <b>PULL_SECRET</b> đã đặt cho Worker.</div>
+
+    <button id="pullTest" style="background:#f59e0b; margin-top:10px;">Kiểm tra kết nối Worker</button>
+    <div class="status" id="pullStatus"></div>
+
+    <div class="divider"></div>
+
+    <label for="catalog">Danh mục sản phẩm chuẩn (CATALOG)</label>
+    <textarea id="catalog" placeholder="Mỗi dòng 1 sản phẩm, ví dụ:&#10;Chả cốm Bếp Cô Như 500g&#10;Nem rán hải sản 10 cái&#10;Giò lụa 1kg"></textarea>
+    <div class="hint">AI sẽ ánh xạ tên khách nói → tên chuẩn trong danh sách này. Để trống nếu không cần chuẩn hóa.</div>
+
+    <button id="save">Lưu cấu hình</button>
+    <div class="status" id="status"></div>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

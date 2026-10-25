@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+    body { width: 300px; margin: 0; padding: 16px; background: #fff; color: #222; }
+    h1 { font-size: 15px; margin: 0 0 10px; }
+    button { width: 100%; border: 0; border-radius: 6px; padding: 11px; font-size: 14px;
+             cursor: pointer; margin-top: 8px; }
+    #fill { background: #16a34a; color: #fff; }
+    #fill:hover { background: #138a3f; }
+    #fill:disabled { background: #9fd3b2; cursor: default; }
+    #openOptions { background: #eef1f5; color: #333; }
+    #openOptions:hover { background: #e2e6ec; }
+    .status { margin-top: 12px; font-size: 13px; line-height: 1.4; min-height: 18px; white-space: pre-wrap; }
+    .ok { color: #16a34a; } .err { color: #dc2626; } .info { color: #555; }
+    .warn { font-size: 12px; color: #b45309; background: #fff7ed; padding: 8px;
+            border-radius: 6px; margin-bottom: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <h1>Vpage Tự Điền Đơn</h1>
+  <div class="warn" id="noToken">Chưa cấu hình API Token. Hãy mở phần Cấu hình.</div>
+  <button id="fill">Lên đơn tự động</button>
+  <button id="openOptions">Cấu hình</button>
+  <div class="status info" id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
