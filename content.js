@@ -774,7 +774,7 @@ function isIncompleteThreeLevelSelection(input, regionText) {
 
   const expectedWard = stripRegionType(parts[0]);
   const expectedProvince = parts[parts.length - 1];
-  const displayParts = display.split(/[,\\n]/).map((s) => s.trim()).filter(Boolean);
+  const displayParts = display.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
   const displayedProvince = displayParts[displayParts.length - 1] || "";
 
   // Chỉ xác định là "đã chọn thiếu phường" khi kết quả vẫn thuộc đúng tỉnh/thành đích.
