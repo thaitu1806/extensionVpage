@@ -1823,6 +1823,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ orderText: findShopOrderMessage(all, lastN) });
     return false;
   }
+  if (msg?.type === "COLLECT_RECENT_MESSAGES") {
+    const all = readAllMessages();
+    const lastN = Math.max(1, Math.min(Number(msg.lastN) || 3, 10));
+    sendResponse({
+      messages: all.slice(-lastN).map((m) => ({
+        role: m.role,
+        sender: m.sender || "",
+        text: m.text || ""
+      }))
+    });
+    return false;
+  }
   if (msg?.type === "GET_IFRAME_OFFSET") {
     // Chạy ở frame top: tìm iframe tạo đơn (crmadd) và trả vị trí của nó.
     const ifr = document.querySelector("iframe#addOrder, iframe[src*='crmadd']");
