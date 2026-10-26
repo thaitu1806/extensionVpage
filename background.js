@@ -1390,47 +1390,29 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId, frameIds: [0] },
-        func: function (phoneToMatch) {
+        func: function () {
           const items = Array.from(document.querySelectorAll(".item"))
             .filter((el) => el.offsetParent !== null && el.querySelector("b.name, .name"));
           if (!items.length) return { ok: false, count: 0 };
 
-          // Nếu danh sách quá nhiều (>10), có thể chưa filter xong -> chờ tiếp.
-          if (phoneToMatch && items.length > 10) {
-            return { ok: false, count: items.length, reason: "list_too_large" };
-          }
-
+          // URL đã lọc đúng khách hàng; chỉ cần click box hội thoại đầu tiên.
           const el = items[0];
           const name = (el.querySelector("b.name")?.innerText
             || el.querySelector(".name")?.innerText || "").trim();
-          const itemText = (el.innerText || "").replace(/\s+/g, " ");
-
-          // Kiểm tra SĐT có trong text của item không (tránh click nhầm khách).
-          if (phoneToMatch && !itemText.includes(phoneToMatch)) {
-            return { ok: false, count: items.length, name, reason: "phone_mismatch" };
-          }
 
           el.scrollIntoView({ block: "center" });
-          const target = el.querySelector(".info, .content, b.name, .name") || el;
-          const opts = { bubbles: true, cancelable: true, view: window };
-          try { target.dispatchEvent(new PointerEvent("pointerdown", opts)); } catch (_) {}
-          target.dispatchEvent(new MouseEvent("mousedown", opts));
-          target.dispatchEvent(new MouseEvent("mouseup", opts));
-          target.dispatchEvent(new MouseEvent("click", opts));
-          if (typeof el.click === "function") el.click();
+          const target = el.querySelector(".info") || el;
+          target.click();
+
           return { ok: true, count: items.length, name };
         },
-        args: [phone]
+        args: []
       });
+
       const r = results && results[0] && results[0].result;
       if (r && r.ok) {
         blog(`AutoFill: đã click box đầu tiên "${r.name}" (trong ${r.count} box).`);
         return r.name || "(không tên)";
-      }
-      if (r && r.reason === "phone_mismatch") {
-        blog(`AutoFill: box đầu tiên "${r.name}" không khớp SĐT ${phone}, chờ filter...`);
-      } else if (r && r.reason === "list_too_large") {
-        blog(`AutoFill: danh sách còn ${r.count} items, có thể chưa filter -> chờ...`);
       }
     } catch (e) {
       blog("openFirstConversation lỗi:", e.message);
