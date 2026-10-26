@@ -320,6 +320,22 @@ async function fillForm(data) {
     log("KẾT: frame này không có form đơn hàng.");
     return { filled: false, info: "Frame tạo đơn nhưng form chưa render." };
   }
+  // Mặc định KHÔNG bật "Tự vận chuyển": chỉ bật khi khách yêu cầu.
+  // Ép về trạng thái bỏ chọn mỗi lần tự điền đơn để tránh kế thừa trạng thái cũ của form.
+  const transformerCheckbox = document.querySelector('#useTransformer[type="checkbox"]');
+  if (transformerCheckbox) {
+    if (transformerCheckbox.checked) {
+      transformerCheckbox.checked = false;
+      transformerCheckbox.dispatchEvent(new Event("input", { bubbles: true }));
+      transformerCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
+      log('Mặc định bỏ chọn "Tự vận chuyển" (chỉ bật khi khách yêu cầu).');
+    } else {
+      log('Ô "Tự vận chuyển" đã bỏ chọn.');
+    }
+  } else {
+    log('Không tìm thấy checkbox #useTransformer; không thể đặt mặc định Tự vận chuyển.');
+  }
+
   log("Form đơn hàng đã sẵn sàng. Chờ API nạp dữ liệu khách...");
   // Chờ thêm để API load thông tin khách (tên/sđt/địa chỉ) xong,
   // tránh đọc nhầm ô trống rồi điền đè.
