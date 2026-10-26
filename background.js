@@ -1321,7 +1321,18 @@ async function runScanCycle() {
       continue;
     }
 
-    // 4) Parse để lấy thông tin + khóa chống trùng; nếu parse lỗi vẫn gửi text thô.
+    // 4) Bỏ qua tin xác nhận đã có dấu hiệu đơn được tạo/xử lý trước đó.
+    // Tin CSKH tự động kiểu "Em gửi đơn cho mình ạ" có thể còn nằm trong hội thoại
+    // chưa đọc dù đơn đã được tạo; nếu có "Theo dõi vận chuyển" hoặc link tracking
+    // thì không gửi Telegram và tuyệt đối không kích hoạt luồng tạo đơn lần nữa.
+    const normalizedOrderText = normalizeTrackingText(orderText);
+    const hasTrackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(orderText);
+    if (normalizedOrderText.includes("theo doi van chuyen") || hasTrackingLink) {
+      blog(`Quét: "${conv.name}" - bỏ qua template vì đã có dấu hiệu tracking/đơn đã xử lý; không gửi Telegram, không lên đơn lại.`);
+      continue;
+    }
+
+    // Parse để lấy thông tin + khóa chống trùng; nếu parse lỗi vẫn gửi text thô.
     const parsed = parseOrderConfirmation(orderText);
     const key = (parsed && parsed.phone) || orderText.slice(0, 120);
     if (notified[key]) { blog(`Quét: "${conv.name}" - đã gửi trước đó, bỏ qua.`); continue; }
