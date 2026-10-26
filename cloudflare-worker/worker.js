@@ -1,152 +1,69 @@
-/**
- * Cloudflare Worker: cầu nối Telegram <-> Extension để lên đơn tự động.
- *
- * LUỒNG:
- *   1) Extension gửi thông báo đơn kèm nút callback "Lên đơn tự động".
- *   2) Người dùng bấm nút trên ĐIỆN THOẠI -> Telegram gọi webhook POST /telegram.
- *   3) Worker ghi lệnh {phone} vào KV (hàng đợi ORDERS).
- *   4) Extension POLL GET /pull mỗi ~30s -> nhận lệnh -> lên đơn -> POST /ack.
- *
- * BIẾN MÔI TRƯỜNG (Settings -> Variables & Secrets):
- *   - BOT_TOKEN        : token bot Telegram (secret).
- *   - TG_SECRET        : chuỗi bí mật đặt khi set webhook (header X-Telegram-Bot-Api-Secret-Token).
- *   - PULL_SECRET      : chuỗi bí mật extension gửi kèm khi /pull, /ack (header x-pull-secret).
- *   - ALLOWED_CHAT_IDS : (tùy chọn) danh sách chat_id được phép, ngăn cách dấu phẩy.
- *
- * KV NAMESPACE (Settings -> Bindings):
- *   - ORDERS : lưu hàng đợi lệnh lên đơn.
- *
- * ENDPOINTS:
- *   POST /telegram  : webhook Telegram (callback_query / message).
- *   GET  /pull      : extension lấy các lệnh đang chờ. Trả { commands: [{id, phone, ts}] }.
- *   POST /ack       : extension báo đã xử lý xong 1 lệnh. Body { id }.
- *   GET  /health    : kiểm tra sống.
- */
-
+/** Telegram -> Queue -> Durable Object -> WebSocket -> Chrome extension. */
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
-
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, "") || "/";
-
-    try {
-      if (path === "/health") {
-        return json({ ok: true, ts: Date.now() });
-      }
-      if (path === "/telegram" && request.method === "POST") {
-        return handleTelegram(request, env);
-      }
-      if (path === "/pull" && request.method === "GET") {
-        return handlePull(request, env);
-      }
-      if (path === "/ack" && request.method === "POST") {
-        return handleAck(request, env);
-      }
-      return json({ ok: false, error: "not found" }, 404);
-    } catch (e) {
-      return json({ ok: false, error: String(e && e.message || e) }, 500);
-    }
+ async fetch(request,env){
+  const url=new URL(request.url),path=url.pathname.replace(/\/+$/,"")||"/";
+  try{
+   if(path==="/health")return json({ok:true,mode:"queue-push",ts:Date.now()});
+   if(path==="/telegram"&&request.method==="POST")return handleTelegram(request,env);
+   if(path==="/ws")return env.COMMANDS.get(env.COMMANDS.idFromName("global")).fetch(request);
+   if(path==="/ack"&&request.method==="POST"){
+    if(!checkSecret(request,env))return json({ok:false,error:"bad secret"},401);
+    const body=await request.json().catch(()=>({}));if(!body.id)return json({ok:false,error:"missing id"},400);
+    return env.COMMANDS.get(env.COMMANDS.idFromName("global")).fetch("https://command-hub.internal/ack",{method:"POST",headers:{"content-type":"application/json","x-pull-secret":env.PULL_SECRET},body:JSON.stringify({id:String(body.id)})});
+   }
+   if(path==="/pull")return json({ok:false,error:"polling_disabled",message:"Cập nhật extension sang bản Queue Push."},410);
+   return json({ok:false,error:"not found"},404);
+  }catch(e){return json({ok:false,error:String(e&&e.message||e)},500);}
+ },
+ async queue(batch,env){
+  const stub=env.COMMANDS.get(env.COMMANDS.idFromName("global"));
+  for(const message of batch.messages){
+   try{
+    const response=await stub.fetch("https://command-hub.internal/enqueue",{method:"POST",headers:{"content-type":"application/json","x-internal-secret":env.PULL_SECRET||""},body:JSON.stringify(message.body)});
+    if(!response.ok)throw new Error("Durable Object HTTP "+response.status);message.ack();
+   }catch(e){console.error("Queue delivery failed:",e);message.retry();}
   }
+ }
 };
-
-function json(obj, status = 200, extraHeaders) {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { ...JSON_HEADERS, ...(extraHeaders || {}) }
-  });
+function json(obj,status=200){return new Response(JSON.stringify(obj),{status,headers:JSON_HEADERS});}
+async function handleTelegram(request,env){
+ if(env.TG_SECRET&&request.headers.get("x-telegram-bot-api-secret-token")!==env.TG_SECRET)return json({ok:false,error:"bad secret"},401);
+ const update=await request.json().catch(()=>null),cq=update&&update.callback_query;if(!cq)return json({ok:true});
+ const chatId=cq.message&&cq.message.chat&&cq.message.chat.id;
+ if(!chatIdAllowed(env,chatId)){await answerCallback(env,cq.id,"Không có quyền.");return json({ok:true});}
+ const match=String(cq.data||"").match(/^fill:(\d{6,15})$/);
+ if(!match){await answerCallback(env,cq.id,"Lệnh không hợp lệ.");return json({ok:true});}
+ const now=Date.now(),command={id:now+"_"+crypto.randomUUID().slice(0,8),phone:match[1],chatId,ts:now};
+ await env.ORDERS_QUEUE.send(command);await answerCallback(env,cq.id,"Đã nhận lệnh lên đơn cho "+command.phone+". Đang chuyển đến extension...");
+ return json({ok:true,queued:true,id:command.id});
 }
+function chatIdAllowed(env,chatId){if(!env.ALLOWED_CHAT_IDS)return true;return String(env.ALLOWED_CHAT_IDS).split(",").map(s=>s.trim()).filter(Boolean).includes(String(chatId));}
+async function answerCallback(env,id,text){if(!env.BOT_TOKEN)return;await fetch("https://api.telegram.org/bot"+env.BOT_TOKEN+"/answerCallbackQuery",{method:"POST",headers:JSON_HEADERS,body:JSON.stringify({callback_query_id:id,text,show_alert:false})}).catch(()=>{});}
+function checkSecret(request,env){return !!env.PULL_SECRET&&request.headers.get("x-pull-secret")===env.PULL_SECRET;}
 
-/* ============== WEBHOOK TELEGRAM ============== */
-
-async function handleTelegram(request, env) {
-  // Xác thực: Telegram gửi kèm header secret đã đặt khi setWebhook.
-  if (env.TG_SECRET) {
-    const got = request.headers.get("x-telegram-bot-api-secret-token");
-    if (got !== env.TG_SECRET) return json({ ok: false, error: "bad secret" }, 401);
+export class CommandHub{
+ constructor(state,env){this.state=state;this.env=env;}
+ async fetch(request){
+  const url=new URL(request.url);
+  if(url.pathname==="/ws"){
+   if(!this.env.PULL_SECRET||url.searchParams.get("secret")!==this.env.PULL_SECRET)return new Response("Unauthorized",{status:401});
+   if(request.headers.get("Upgrade")!=="websocket")return new Response("Expected WebSocket",{status:426});
+   const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.state.acceptWebSocket(server);
+   const pending=await this.state.storage.list({prefix:"cmd:"});for(const command of pending.values())try{server.send(JSON.stringify({type:"command",command}));}catch(_){}
+   return new Response(null,{status:101,webSocket:client});
   }
-
-  const update = await request.json().catch(() => null);
-  if (!update) return json({ ok: true }); // bỏ qua update rác
-
-  // Chỉ xử lý callback_query (bấm nút inline).
-  const cq = update.callback_query;
-  if (!cq) return json({ ok: true });
-
-  const chatId = cq.message && cq.message.chat && cq.message.chat.id;
-  if (!chatIdAllowed(env, chatId)) {
-    await answerCallback(env, cq.id, "Không có quyền.");
-    return json({ ok: true });
+  if(url.pathname==="/enqueue"&&request.method==="POST"){
+   if(!this.env.PULL_SECRET||request.headers.get("x-internal-secret")!==this.env.PULL_SECRET)return json({ok:false,error:"bad secret"},401);
+   const cmd=await request.json().catch(()=>null);if(!cmd||!cmd.id||!cmd.phone)return json({ok:false,error:"invalid command"},400);
+   await this.state.storage.put("cmd:"+cmd.id,cmd);for(const ws of this.state.getWebSockets())try{ws.send(JSON.stringify({type:"command",command:cmd}));}catch(_){}
+   return json({ok:true});
   }
-
-  // data dạng "fill:<phone>".
-  const data = String(cq.data || "");
-  const m = data.match(/^fill:(\d{6,15})$/);
-  if (!m) {
-    await answerCallback(env, cq.id, "Lệnh không hợp lệ.");
-    return json({ ok: true });
+  if(url.pathname==="/ack"&&request.method==="POST"){
+   if(!this.env.PULL_SECRET||request.headers.get("x-pull-secret")!==this.env.PULL_SECRET)return json({ok:false,error:"bad secret"},401);
+   const body=await request.json().catch(()=>({}));if(!body.id)return json({ok:false,error:"missing id"},400);
+   await this.state.storage.delete("cmd:"+String(body.id));return json({ok:true});
   }
-  const phone = m[1];
-
-  // Ghi lệnh vào KV (hàng đợi). Key có tiền tố "cmd:" + timestamp để /pull quét.
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const cmd = { id, phone, chatId, ts: Date.now(), status: "pending" };
-  // TTL 1 giờ: nếu extension không xử lý thì tự hết hạn.
-  await env.ORDERS.put(`cmd:${id}`, JSON.stringify(cmd), { expirationTtl: 3600 });
-
-  await answerCallback(env, cq.id, `Đã nhận lệnh lên đơn cho ${phone}. Đang xử lý...`);
-  return json({ ok: true });
-}
-
-function chatIdAllowed(env, chatId) {
-  if (!env.ALLOWED_CHAT_IDS) return true; // không giới hạn
-  const list = String(env.ALLOWED_CHAT_IDS).split(",").map((s) => s.trim()).filter(Boolean);
-  return list.includes(String(chatId));
-}
-
-async function answerCallback(env, callbackQueryId, text) {
-  if (!env.BOT_TOKEN) return;
-  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
-    method: "POST",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ callback_query_id: callbackQueryId, text, show_alert: false })
-  }).catch(() => {});
-}
-
-/* ============== API CHO EXTENSION ============== */
-
-function checkPullSecret(request, env) {
-  if (!env.PULL_SECRET) return true;
-  return request.headers.get("x-pull-secret") === env.PULL_SECRET;
-}
-
-// Extension lấy các lệnh đang chờ.
-async function handlePull(request, env) {
-  if (!checkPullSecret(request, env)) return json({ ok: false, error: "bad secret" }, 401);
-
-  const list = await env.ORDERS.list({ prefix: "cmd:" });
-  const commands = [];
-  for (const k of list.keys) {
-    const raw = await env.ORDERS.get(k.name);
-    if (!raw) continue;
-    try {
-      const cmd = JSON.parse(raw);
-      if (cmd.status === "pending") commands.push({ id: cmd.id, phone: cmd.phone, ts: cmd.ts });
-    } catch (_) {}
-  }
-  // Sắp xếp theo thời gian tăng dần (xử lý cũ trước).
-  commands.sort((a, b) => a.ts - b.ts);
-  return json({ ok: true, commands }, 200, { "cache-control": "no-store" });
-}
-
-// Extension báo đã xử lý xong 1 lệnh -> xóa khỏi hàng đợi.
-async function handleAck(request, env) {
-  if (!checkPullSecret(request, env)) return json({ ok: false, error: "bad secret" }, 401);
-
-  const body = await request.json().catch(() => ({}));
-  const id = String(body.id || "");
-  if (!id) return json({ ok: false, error: "missing id" }, 400);
-
-  await env.ORDERS.delete(`cmd:${id}`);
-  return json({ ok: true });
+  return json({ok:false,error:"not found"},404);
+ }
 }
