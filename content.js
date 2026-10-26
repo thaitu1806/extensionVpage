@@ -755,6 +755,41 @@ function getRegionSuggestionItems() {
   return items;
 }
 
+// Kiểm tra Vpage đã chọn đủ cấp phường khi đang tìm theo địa chỉ 3 cấp chưa.
+// Một số kết quả có vẻ được chọn thành công nhưng placeholder chỉ hiện "Quận X, Tỉnh Y".
+function getRegionDisplayText(input) {
+  if (!input) return "";
+  const placeholder = (input.getAttribute("placeholder") || "").trim();
+  // Vpage thường hiển thị địa giới đã chọn trong placeholder, còn value có thể rỗng.
+  if (placeholder.includes(",")) return placeholder;
+  return (input.value || placeholder).trim();
+}
+
+function isIncompleteThreeLevelSelection(input, regionText) {
+  const parts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 3) return false;
+
+  const display = getRegionDisplayText(input);
+  if (!display || !display.includes(",")) return false;
+
+  const expectedWard = stripRegionType(parts[0]);
+  const expectedProvince = parts[parts.length - 1];
+  const displayParts = display.split(/[,\\n]/).map((s) => s.trim()).filter(Boolean);
+  const displayedProvince = displayParts[displayParts.length - 1] || "";
+
+  // Chỉ xác định là "đã chọn thiếu phường" khi kết quả vẫn thuộc đúng tỉnh/thành đích.
+  if (!sameProvinceName(displayedProvince, expectedProvince)) return false;
+
+  const normalizedDisplay = normalize(display);
+  const normalizedWard = normalize(expectedWard);
+  const wardPresent = normalizedWard.length > 0 && normalizedDisplay.includes(normalizedWard);
+  if (!wardPresent) {
+    log(`fillAddressRegion: kết quả 3 cấp bị thiếu phường "${parts[0]}"; placeholder hiện "${display}".`);
+    return true;
+  }
+  return false;
+}
+
 async function fillAddressRegion(region3, region2) {
   const input = findAddressRegionInput();
   if (!input) { log("fillAddressRegion: không thấy ô địa chỉ hành chính."); return false; }
@@ -853,14 +888,19 @@ async function fillAddressRegion(region3, region2) {
   log(`fillAddressRegion: thử 3 cấp "${region3}"`);
   if (await tryPickRegion(input, region3)) return true;
 
-  // ÉP CẤP 3: KHÔNG fallback sang 2 cấp (theo yêu cầu). Dừng ở đây.
-  if (forceLevel3) {
-    log("fillAddressRegion: ÉP CẤP 3 -> KHÔNG fallback 2 cấp. Không chọn được ở cấp 3.");
+  // Nếu đã chọn được kết quả nhưng placeholder chỉ có Quận/Tỉnh (thiếu phường),
+  // cho phép fallback 2 cấp kể cả khi địa chỉ ban đầu được ép tìm 3 cấp.
+  // Các trường hợp ép 3 cấp khác vẫn giữ nguyên hành vi cũ nếu không có dấu hiệu thiếu phường.
+  const incompleteThreeLevelSelection = isIncompleteThreeLevelSelection(input, region3);
+  if (forceLevel3 && !incompleteThreeLevelSelection) {
+    log("fillAddressRegion: ÉP CẤP 3 -> không có dấu hiệu đã chọn thiếu phường; giữ nguyên chế độ 3 cấp.");
     return false;
   }
 
-  // Không ra -> BẬT 'Địa chỉ 2 cấp' + chờ load + thử 2 cấp (dự phòng).
-  log("fillAddressRegion: 3 cấp không ra -> BẬT 'Địa chỉ 2 cấp' (dự phòng).");
+  // Không ra hoặc kết quả 3 cấp bị thiếu phường -> BẬT 'Địa chỉ 2 cấp' + thử lại.
+  log(incompleteThreeLevelSelection
+    ? "fillAddressRegion: kết quả 3 cấp thiếu phường -> BẬT 'Địa chỉ 2 cấp' để tìm lại."
+    : "fillAddressRegion: 3 cấp không ra -> BẬT 'Địa chỉ 2 cấp' (dự phòng).");
   const toggled = await setTwoLevelAddress(true);
   if (toggled) {
     await sleep(3000); // chờ load lại sau khi đổi chế độ
@@ -907,11 +947,23 @@ async function tryPickRegion(input, regionText) {
     await realClick(best);
     await sleep(900);
     const picked = hasValue(input) || getRegionSuggestionItems().length === 0;
-    log(`tryPickRegion: sau click, input="${input.value}", picked=${picked}`);
-    if (picked) return true;
+    log(`tryPickRegion: sau click, input="${input.value}", placeholder="${input.getAttribute("placeholder") || ""}", picked=${picked}`);
+    if (picked) {
+      if (isIncompleteThreeLevelSelection(input, regionText)) {
+        log("tryPickRegion: đã chọn nhưng thiếu phường; thử biến thể query tiếp theo.");
+        continue;
+      }
+      return true;
+    }
     simulateClick(best);
     await sleep(600);
-    if (hasValue(input)) return true;
+    if (hasValue(input) || getRegionSuggestionItems().length === 0) {
+      if (isIncompleteThreeLevelSelection(input, regionText)) {
+        log("tryPickRegion: sau click dự phòng vẫn thiếu phường; thử biến thể query tiếp theo.");
+        continue;
+      }
+      return true;
+    }
   }
   return false;
 }
