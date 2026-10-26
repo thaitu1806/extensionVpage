@@ -1238,7 +1238,14 @@ async function runScanCycle() {
     tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3",
     autoFillEnabled: false, workerUrl: ""
   });
-  if (!cfg.tgEnabled || !cfg.tgToken || !cfg.tgChatId) return;
+  if (!cfg.tgEnabled) {
+    blog("Quét bỏ qua: tùy chọn tự động quét Telegram đang tắt (tgEnabled=false).");
+    return;
+  }
+  if (!cfg.tgToken || !cfg.tgChatId) {
+    blog("Quét bỏ qua: chưa cấu hình Telegram Bot Token hoặc Chat ID.");
+    return;
+  }
 
   // Số tin GẦN NHẤT cần đọc trong mỗi hội thoại (từ dưới lên). Mặc định 3.
   const lastN = Math.min(Math.max(parseInt(cfg.msgCount, 10) || 3, 1), 10);
@@ -1506,11 +1513,47 @@ async function runPullCycle() {
   }
 }
 
-// Thiết lập alarm: quét chat 3 phút, poll lệnh lên đơn ~30 giây.
-chrome.alarms.create("ds-scan", { periodInMinutes: 3 });
-chrome.alarms.create("ds-pull", { periodInMinutes: 0.5 });
+// Khóa chống chạy chồng nhiều lượt quét nếu một lượt mất hơn chu kỳ alarm.
+let _scanBusy = false;
+async function runScanCycleSafe() {
+  if (_scanBusy) {
+    blog("Quét bỏ qua: lượt quét trước vẫn đang chạy.");
+    return;
+  }
+  _scanBusy = true;
+  try {
+    await runScanCycle();
+  } catch (e) {
+    blog("runScanCycle lỗi:", e?.stack || e?.message || String(e));
+  } finally {
+    _scanBusy = false;
+  }
+}
+
+// Đảm bảo alarm được tạo lại khi Chrome khởi động hoặc extension được cài/cập nhật.
+async function ensureBackgroundAlarms() {
+  const scan = await chrome.alarms.get("ds-scan");
+  if (!scan) {
+    await chrome.alarms.create("ds-scan", { periodInMinutes: 3 });
+    blog("Đã tạo lại alarm ds-scan (mỗi 3 phút).");
+  } else {
+    blog(`Alarm ds-scan đang hoạt động, chu kỳ ${scan.periodInMinutes} phút.`);
+  }
+  const pull = await chrome.alarms.get("ds-pull");
+  if (!pull) {
+    await chrome.alarms.create("ds-pull", { periodInMinutes: 0.5 });
+    blog("Đã tạo lại alarm ds-pull (30 giây).");
+  }
+}
+ensureBackgroundAlarms().catch((e) => blog("Không khởi tạo được alarm:", e.message));
+chrome.runtime.onStartup.addListener(() => {
+  ensureBackgroundAlarms().catch((e) => blog("onStartup tạo alarm lỗi:", e.message));
+});
+chrome.runtime.onInstalled.addListener(() => {
+  ensureBackgroundAlarms().catch((e) => blog("onInstalled tạo alarm lỗi:", e.message));
+});
 chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name === "ds-scan") runScanCycle().catch((e) => blog("runScanCycle lỗi:", e.message));
+  if (a.name === "ds-scan") runScanCycleSafe();
   else if (a.name === "ds-pull") runPullCycle().catch((e) => blog("runPullCycle lỗi:", e.message));
 });
 
