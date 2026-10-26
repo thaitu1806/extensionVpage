@@ -32,6 +32,7 @@ const DEFAULTS = {
   tgToken: "",
   tgChatId: "",
   autoFillEnabled: false,
+  autoSubmitOrder: false,
   autoOrderStatus: "Mới",
   workerUrl: "",
   pullSecret: ""
@@ -53,6 +54,7 @@ function load() {
     $("tgToken").value = cfg.tgToken || "";
     $("tgChatId").value = cfg.tgChatId || "";
     $("autoFillEnabled").checked = !!cfg.autoFillEnabled;
+    $("autoSubmitOrder").checked = !!cfg.autoSubmitOrder;
     $("autoOrderStatus").value = cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới";
     $("workerUrl").value = cfg.workerUrl || "";
     $("pullSecret").value = cfg.pullSecret || "";
@@ -75,6 +77,7 @@ function save() {
     tgToken: $("tgToken").value.trim(),
     tgChatId: $("tgChatId").value.trim(),
     autoFillEnabled: $("autoFillEnabled").checked,
+    autoSubmitOrder: $("autoSubmitOrder").checked,
     autoOrderStatus: $("autoOrderStatus").value === "Đã xác nhận" ? "Đã xác nhận" : "Mới",
     workerUrl: $("workerUrl").value.trim().replace(/\/+$/, ""),
     pullSecret: $("pullSecret").value.trim()
