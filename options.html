@@ -104,6 +104,9 @@
     <p class="desc">Bấm nút "Lên đơn" trên Telegram → Queue kích hoạt Consumer → extension nhận lệnh qua WebSocket, không polling KV. Cần Chrome mở và đã đăng nhập Vpage.</p>
 
     <label><input type="checkbox" id="autoFillEnabled" style="width:auto;margin-right:6px;" />Bật nhận lệnh lên đơn tự động từ Telegram</label>
+    <label><input type="checkbox" id="autoSubmitOrder" style="width:auto;margin-right:6px;" />Tự động bấm Lưu/gửi đơn sau khi điền (chỉ bật khi đã kiểm thử ổn)</label>
+    <div class="hint">Khi tắt: extension chỉ điền form để bạn kiểm tra, không lưu đơn và giữ tab đơn hàng mở. Khi bật: extension tự bấm Lưu và đóng tab sau 3 giây.</div>
+
     <label for="autoOrderStatus">Trạng thái đơn khi lên đơn tự động</label>
     <select id="autoOrderStatus">
       <option value="Mới">Mới (mặc định — dùng khi kiểm thử)</option>
