@@ -28,6 +28,7 @@ const DEFAULTS = {
   promoOther: "",
   hcmProvinces: "Bình Dương, Bà Rịa - Vũng Tàu, Đồng Nai, Long An, Tây Ninh, Bình Phước",
   tgEnabled: false,
+  scanIntervalMinutes: 3,
   tgToken: "",
   tgChatId: "",
   autoFillEnabled: false,
@@ -47,6 +48,7 @@ function load() {
     $("promoOther").value = cfg.promoOther || "";
     $("hcmProvinces").value = cfg.hcmProvinces || "";
     $("tgEnabled").checked = !!cfg.tgEnabled;
+    $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
     $("tgChatId").value = cfg.tgChatId || "";
     $("autoFillEnabled").checked = !!cfg.autoFillEnabled;
@@ -67,6 +69,7 @@ function save() {
     promoOther: $("promoOther").value.trim(),
     hcmProvinces: $("hcmProvinces").value.trim(),
     tgEnabled: $("tgEnabled").checked,
+    scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
     tgChatId: $("tgChatId").value.trim(),
     autoFillEnabled: $("autoFillEnabled").checked,
