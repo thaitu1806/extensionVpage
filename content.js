@@ -785,10 +785,10 @@ async function fillAddressRegion(region3, region2) {
     .toLowerCase()
     .replace(/đ/g, "d")
     .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[–—]/g, "-")
-    .replace(/^(tinh|thanh pho|tp\\.?)[ \\t]+/i, "")
-    .replace(/\\s+/g, " ")
+    .replace(/^(tinh|thanh pho|tp\.?)[ \t]+/i, "")
+    .replace(/\s+/g, " ")
     .trim();
   const groupedProvinceKeys = groupedProvinceNames.map(normalizeProvince);
   const hasGroupedProvince = parts3.some((part) => {
