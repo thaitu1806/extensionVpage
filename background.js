@@ -1158,6 +1158,32 @@ async function getShopOrderText(tabId, lastN = 3) {
   return "";
 }
 
+// Lấy N tin nhắn gần nhất để cảnh báo Telegram khi AI chưa kịp tạo template chốt đơn.
+async function getRecentConversationMessages(tabId, lastN = 3) {
+  for (const frameId of await getFrameIds(tabId)) {
+    try {
+      const res = await sendToFrame(tabId, frameId, { type: "COLLECT_RECENT_MESSAGES", lastN });
+      if (res && Array.isArray(res.messages) && res.messages.length) return res.messages;
+    } catch (_) {}
+  }
+  return [];
+}
+
+// Chỉ gửi cảnh báo dự phòng khi có tin KHÁCH chứa cả số điện thoại và dấu hiệu địa chỉ.
+// Không tự động lên đơn từ tin nhắn thô.
+function findCustomerContactMessage(messages) {
+  const recent = Array.isArray(messages) ? messages : [];
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const m = recent[i] || {};
+    if (m.role !== "customer" && m.role !== "client" && m.role !== "khach") continue;
+    const t = String(m.text || "").trim();
+    const phone = t.match(/(?:\+?84|0)\d(?:[\s.-]?\d){8,10}/);
+    const hasAddress = /(địa chỉ|\bphường\b|\bxã\b|\bquận\b|\bhuyện\b|\bấp\b|\bthôn\b|\bđường\b|\bchung cư\b)/i.test(t);
+    if (phone && hasAddress) return { text: t, phone: phone[0].replace(/\D/g, ""), sender: m.sender || "" };
+  }
+  return null;
+}
+
 // Định dạng khối đơn hàng thành nội dung Telegram ĐẦY ĐỦ.
 // - Phần trên: các trường đã parse (đẹp, có emoji) để dễ đọc nhanh.
 // - Phần dưới: NGUYÊN VĂN khối đơn shop đã nhắn, đảm bảo KHÔNG sót thông tin
@@ -1243,7 +1269,45 @@ async function runScanCycle() {
 
     // 3) Lấy khối đơn trong N tin GẦN NHẤT bên SHOP.
     const orderText = await getShopOrderText(tab.id, lastN);
-    if (!orderText) { blog(`Quét: "${conv.name}" - tin gần nhất bên mình KHÔNG phải khối đơn.`); continue; }
+    if (!orderText) {
+      // Nếu 3 tin gần nhất chưa có template chốt đơn và cũng chưa có tracking,
+      // vẫn báo Telegram khi khách đã gửi SĐT + địa chỉ để không bỏ sót lead.
+      const recentMessages = await getRecentConversationMessages(tab.id, lastN);
+      const hasTracking = recentMessages.some((m) => normalizeTrackingText(m.text).includes("theo doi van chuyen"));
+      const contact = !hasTracking ? findCustomerContactMessage(recentMessages) : null;
+      if (!contact) {
+        blog(`Quét: "${conv.name}" - chưa có template chốt đơn hoặc tin khách đủ SĐT + địa chỉ (hoặc đã có tracking).`);
+        continue;
+      }
+
+      const fallbackKey = "contact:" + contact.phone;
+      if (notified[fallbackKey]) {
+        blog(`Quét: "${conv.name}" - cảnh báo khách ${contact.phone} đã gửi trước đó, bỏ qua.`);
+        continue;
+      }
+      const fallbackText = [
+        "⚠️ <b>KHÁCH ĐÃ GỬI SĐT + ĐỊA CHỈ, CHƯA THẤY TEMPLATE CHỐT ĐƠN</b>",
+        `💬 Hội thoại: ${escapeHtml(conv.name)}`,
+        contact.sender ? `👤 Người gửi: ${escapeHtml(contact.sender)}` : "",
+        `📞 Số điện thoại: ${escapeHtml(contact.phone)}`,
+        "",
+        "📋 <b>Tin nhắn khách gửi:</b>",
+        `<pre>${escapeHtml(contact.text)}</pre>`,
+        "",
+        "ℹ️ Có thể AI chưa kịp tạo đơn hoặc chốt đơn tự động bị lỗi. Vui lòng kiểm tra hội thoại."
+      ].filter(Boolean).join("\n");
+      const fallbackUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`;
+      const fallbackButtons = [[{ text: "💬 Mở hội thoại", url: fallbackUrl }]];
+      const fallbackResult = await tgSend(cfg.tgToken, cfg.tgChatId, fallbackText, { inline_keyboard: fallbackButtons });
+      if (fallbackResult.ok) {
+        notified[fallbackKey] = now;
+        sent++;
+        blog(`Quét: "${conv.name}" - đã gửi cảnh báo dự phòng cho ${contact.phone}.`);
+      } else {
+        blog(`Quét: gửi cảnh báo dự phòng Telegram lỗi: ${fallbackResult.error}`);
+      }
+      continue;
+    }
 
     // 4) Parse để lấy thông tin + khóa chống trùng; nếu parse lỗi vẫn gửi text thô.
     const parsed = parseOrderConfirmation(orderText);
