@@ -262,6 +262,24 @@ async function waitForOrderForm(timeout = 4000) {
   return hasOrderForm();
 }
 
+function clickSaveButton() {
+  const candidates = Array.from(document.querySelectorAll(
+    "button.btn-success, button, [role='button'], input[type='button'], input[type='submit']"
+  )).filter((el) => el.offsetParent !== null && !el.disabled);
+  const button = candidates.find((el) => {
+    const label = (el.innerText || el.textContent || el.value || el.getAttribute("aria-label") || "")
+      .replace(/\s+/g, " ").trim();
+    return /(?:^|\s)(?:\(F9\)\s*)?Lưu(?:\s|$)/i.test(label) || /\(F9\)\s*Lưu/i.test(label);
+  });
+  if (!button) {
+    log("Webhook auto-save: không tìm thấy nút Lưu.");
+    return false;
+  }
+  log("Webhook auto-save: click nút Lưu:", (button.innerText || button.textContent || "").trim());
+  button.click();
+  return true;
+}
+
 async function fillForm(data) {
   log("FILL_FORM nhận dữ liệu:", JSON.stringify(data));
 
@@ -386,10 +404,22 @@ async function fillForm(data) {
     }
   }
 
-  // Trạng thái đơn hàng -> "Đã xác nhận" (value 56).
-  const okStatus = setOrderStatus("Đã xác nhận");
-  log(`-> chọn trạng thái 'Đã xác nhận' = ${okStatus}`);
-  if (okStatus) done.push("trạng thái");
+  // Chỉ webhook đổi trạng thái thành "Mới" và tự lưu. Manual giữ nguyên logic cũ.
+  if (data.mode === "webhook") {
+    const okStatus = setOrderStatus("Mới");
+    log(`-> webhook: chọn trạng thái 'Mới' = ${okStatus}`);
+    if (okStatus) done.push("trạng thái Mới");
+    if (!okStatus) throw new Error("Webhook: không chọn được trạng thái 'Mới'; không lưu đơn.");
+
+    const saved = clickSaveButton();
+    if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
+    done.push("lưu");
+    await sleep(1800); // đợi thao tác lưu được gửi trước khi background đóng tab.
+  } else {
+    const okStatus = setOrderStatus("Đã xác nhận");
+    log(`-> chọn trạng thái 'Đã xác nhận' = ${okStatus}`);
+    if (okStatus) done.push("trạng thái");
+  }
 
   log("KẾT: đã điền:", done.join(", "), productInfo);
   return {
@@ -1802,7 +1832,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   if (msg?.type === "FILL_FORM") {
-    fillForm(msg.data)
+    const data = { ...(msg.data || {}), mode: msg.mode || msg.data?.mode || "manual" };
+    fillForm(data)
       .then((r) => sendResponse(r))
       .catch((e) => sendResponse({ filled: false, info: "Lỗi điền: " + e.message }));
     return true;
