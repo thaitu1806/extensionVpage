@@ -287,26 +287,8 @@ async function clickSaveButton(timeout = 45000) {
       if (!disabled) {
         log("Webhook auto-save: click nút Lưu:", (button.innerText || button.textContent || "").trim());
         button.click();
-        // Giữ tab mở để Vpage xử lý request lưu; không trả về ngay lập tức.
-        await sleep(1000);
-        const saveStarted = Date.now();
-        let sawSaving = false;
-        while (Date.now() - saveStarted < 20000) {
-          const current = candidates.find((el) => {
-            const label = (el.innerText || el.textContent || el.value || el.getAttribute("aria-label") || "")
-              .replace(/\s+/g, " ").trim();
-            return /(?:^|\s)(?:\(F9\)\s*)?Lưu(?:\s|$)/i.test(label) || /\(F9\)\s*Lưu/i.test(label);
-          });
-          if (current && (current.disabled || current.getAttribute("aria-disabled") === "true"
-            || current.classList.contains("disabled"))) sawSaving = true;
-          // Chờ ít nhất 3 giây để request lưu có thời gian hoàn tất.
-          if (Date.now() - saveStarted >= 3000 && (!current || !current.disabled) && sawSaving) {
-            log("Webhook auto-save: nút Lưu đã hết trạng thái xử lý.");
-            return true;
-          }
-          await sleep(300);
-        }
-        log("Webhook auto-save: đã click Lưu và chờ tối đa 20 giây; không thấy trạng thái hoàn tất rõ ràng.");
+        log("Webhook auto-save: đã click Lưu; chờ đúng 3 giây rồi kết thúc lên đơn tự động.");
+        await sleep(3000);
         return true;
       }
     } else if (lastState !== "missing") {
@@ -455,7 +437,7 @@ async function fillForm(data) {
     const saved = await clickSaveButton(45000);
     if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
     done.push("lưu");
-    await sleep(1000); // clickSaveButton đã chờ request lưu xử lý trước khi trả về.
+    // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.
   } else {
     const okStatus = setOrderStatus("Đã xác nhận");
     log(`-> chọn trạng thái 'Đã xác nhận' = ${okStatus}`);
