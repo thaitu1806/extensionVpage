@@ -443,12 +443,14 @@ async function fillForm(data) {
     }
   }
 
-  // Chỉ webhook đổi trạng thái thành "Mới" và tự lưu. Manual giữ nguyên logic cũ.
+  // Webhook lấy trạng thái từ cấu hình; mặc định "Mới" để kiểm thử an toàn.
   if (data.mode === "webhook") {
-    const okStatus = setOrderStatus("Mới");
-    log(`-> webhook: chọn trạng thái 'Mới' = ${okStatus}`);
-    if (okStatus) done.push("trạng thái Mới");
-    if (!okStatus) throw new Error("Webhook: không chọn được trạng thái 'Mới'; không lưu đơn.");
+    const cfg = await chrome.storage.local.get({ autoOrderStatus: "Mới" });
+    const requestedStatus = cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới";
+    const okStatus = setOrderStatus(requestedStatus);
+    log(`-> webhook: chọn trạng thái '${requestedStatus}' = ${okStatus}`);
+    if (okStatus) done.push(`trạng thái ${requestedStatus}`);
+    if (!okStatus) throw new Error(`Webhook: không chọn được trạng thái '${requestedStatus}'; không lưu đơn.`);
 
     const saved = await clickSaveButton(45000);
     if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
