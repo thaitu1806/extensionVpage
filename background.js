@@ -1470,6 +1470,7 @@ async function fillOrderByPhone(phone) {
 /* ============== PUSH LỆNH QUA WEBSOCKET ============== */
 let _commandSocket = null;
 let _socketReconnectTimer = null;
+let _socketHeartbeat = null;
 let _processingCommands = new Set();
 function connectCommandSocket() {
   if (_commandSocket && (_commandSocket.readyState === WebSocket.OPEN || _commandSocket.readyState === WebSocket.CONNECTING)) return;
@@ -1479,10 +1480,14 @@ function connectCommandSocket() {
       const base = cfg.workerUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:").replace(/\/+$/, "");
       const ws = new WebSocket(base + "/ws?secret=" + encodeURIComponent(cfg.pullSecret));
       _commandSocket = ws;
-      ws.onopen = () => blog("Push: WebSocket đã kết nối; không polling KV.");
+      ws.onopen = () => {
+        blog("Push: WebSocket đã kết nối; không polling KV.");
+        if (_socketHeartbeat) clearInterval(_socketHeartbeat);
+        _socketHeartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) { try { ws.send(JSON.stringify({ type: "ping" })); } catch (_) {} } }, 20000);
+      };
       ws.onmessage = (event) => { let msg; try { msg = JSON.parse(event.data); } catch (_) { return; } if (msg.type === "command" && msg.command) processPushedCommand(msg.command); };
       ws.onerror = () => blog("Push: WebSocket gặp lỗi.");
-      ws.onclose = () => { if (_commandSocket === ws) _commandSocket = null; if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer); _socketReconnectTimer = setTimeout(connectCommandSocket, 5000); blog("Push: WebSocket đóng; sẽ kết nối lại sau 5 giây."); };
+      ws.onclose = () => { if (_commandSocket === ws) _commandSocket = null; if (_socketHeartbeat) clearInterval(_socketHeartbeat); _socketHeartbeat = null; if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer); _socketReconnectTimer = setTimeout(connectCommandSocket, 5000); blog("Push: WebSocket đóng; sẽ kết nối lại sau 5 giây."); };
     } catch (e) { blog("Push: lỗi tạo WebSocket:", e.message); _socketReconnectTimer = setTimeout(connectCommandSocket, 10000); }
   });
 }
@@ -1512,6 +1517,8 @@ async function ackPushedCommand(id) {
 }
 function disconnectCommandSocket() {
   if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer);
+  if (_socketHeartbeat) clearInterval(_socketHeartbeat);
+  _socketHeartbeat = null;
   _socketReconnectTimer = null;
   if (_commandSocket) { _commandSocket.onclose = null; try { _commandSocket.close(); } catch (_) {} _commandSocket = null; }
 }
@@ -1546,7 +1553,8 @@ async function ensureBackgroundAlarms() {
     blog(`Alarm ds-scan đang hoạt động, chu kỳ ${scan.periodInMinutes} phút.`);
   }
   await chrome.alarms.clear("ds-pull"); // Ngừng polling KV cũ.
-  connectCommandSocket();}
+  connectCommandSocket();
+}
 ensureBackgroundAlarms().catch((e) => blog("Không khởi tạo được alarm:", e.message));
 chrome.runtime.onStartup.addListener(() => {
   ensureBackgroundAlarms().catch((e) => blog("onStartup tạo alarm lỗi:", e.message));
