@@ -1085,6 +1085,10 @@ function buildRegionQueries(regionText) {
     .replace(/^(phường|xã|thị trấn|thị xã|quận|huyện|thành phố|tỉnh|tp\.?)\s*/i, "")
     .trim();
   const parts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  // Nếu thiếu tỉnh/thành nhưng có đủ Phường + Quận/Huyện, thử thêm Hồ Chí Minh
+  // vì nhiều địa chỉ khách ở TP.HCM thường được nhập thiếu cấp tỉnh/thành.
+  const missingProvince = parts.length === 2
+    && /^(quận|huyện|thị xã|thị trấn|thành phố)\s+/i.test(parts[1]);
 
   // Chỉ chuẩn hóa CẤP TỈNH/THÀNH PHỐ (cụm cuối cùng), không đụng
   // đến tiền tố Phường/Xã/Quận/Huyện ở các cấp địa giới bên dưới.
@@ -1120,6 +1124,11 @@ function buildRegionQueries(regionText) {
     // 4) Cụm dài nhưng tỉnh/thành đã được chuẩn hóa và bỏ tiền tố.
     queries.push(parts.join(", "));
     queries.push(parts.join(" "));
+    // 5) Dự phòng cho địa chỉ thiếu tỉnh/thành (thường gặp ở TP.HCM).
+    if (missingProvince) {
+      queries.push(`${parts[0]} ${parts[1]} Hồ Chí Minh`);
+      queries.push(`${parts[0]}, ${parts[1]}, Hồ Chí Minh`);
+    }
   } else {
     queries.push(stripType(regionText));
   }
@@ -1176,13 +1185,14 @@ function districtNumberOf(s) {
 
 function pickBestRegion(items, regionText) {
   const parts = regionText.split(",").map((s) => s.trim()).filter(Boolean);
+  const missingProvince = parts.length === 2
+    && /^(quận|huyện|thị xã|thị trấn|thành phố)\s+/i.test(parts[1]);
   const targetWard = parts.length ? normalize(parts[0]) : "";
-  // Tỉnh đích = cụm CUỐI nguyên bản (vd "TP.HCM"/"Tỉnh Đồng Nai"). Dùng
-  // canonicalProvince để quy về tên chuẩn ("ho chi minh") -> khớp được dù viết tắt.
-  const targetProvinceRaw = parts.length ? parts[parts.length - 1] : "";
+  // Nếu chỉ có Phường + Quận/Huyện, coi Hồ Chí Minh là tỉnh/thành dự phòng
+  // và vẫn lọc chính xác theo quận để tránh chọn nhầm phường cùng tên.
+  const targetProvinceRaw = missingProvince ? "Hồ Chí Minh" : (parts.length ? parts[parts.length - 1] : "");
   const targetProvince = canonicalProvince(targetProvinceRaw);
-  // Quận/Huyện đích = cụm GIỮA (chỉ có khi địa chỉ 3 cấp).
-  const targetDistrictRaw = parts.length >= 3 ? parts[1] : "";
+  const targetDistrictRaw = missingProvince ? parts[1] : (parts.length >= 3 ? parts[1] : "");
   const targetDistrict = targetDistrictRaw ? normDistrict(targetDistrictRaw) : "";
   const targetDistrictNum = targetDistrictRaw ? districtNumberOf(targetDistrictRaw) : null;
 
