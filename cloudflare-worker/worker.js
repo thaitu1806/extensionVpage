@@ -44,6 +44,9 @@ function checkSecret(request,env){return !!env.PULL_SECRET&&request.headers.get(
 
 export class CommandHub{
  constructor(state,env){this.state=state;this.env=env;}
+ webSocketMessage(ws,message){
+  try{const data=JSON.parse(typeof message==="string"?message:"");if(data.type==="ping")ws.send(JSON.stringify({type:"pong",ts:Date.now()}));}catch(_){}
+ }
  async fetch(request){
   const url=new URL(request.url);
   if(url.pathname==="/ws"){
