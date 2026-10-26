@@ -1427,6 +1427,7 @@ async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
   // Webhook luôn dùng tab riêng, không điều hướng tab người dùng đang mở.
   const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+  let keepTabForReview = false;
   try {
     await waitTabComplete(tab.id, 20000);
     await new Promise((r) => setTimeout(r, 4000));
@@ -1437,14 +1438,19 @@ async function fillOrderByPhone(phone) {
 
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
     const res = await runFill(tab.id, { mode: "webhook" });
+    keepTabForReview = !!res?.reviewRequired;
     blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 300)}`);
     return res;
   } finally {
-    try {
-      await chrome.tabs.remove(tab.id);
-      blog(`AutoFill webhook: đã đóng tab riêng #${tab.id}.`);
-    } catch (e) {
-      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+    if (keepTabForReview) {
+      blog(`AutoFill webhook: giữ tab riêng #${tab.id} mở để kiểm tra (chế độ chưa tự lưu).`);
+    } else {
+      try {
+        await chrome.tabs.remove(tab.id);
+        blog(`AutoFill webhook: đã đóng tab riêng #${tab.id}.`);
+      } catch (e) {
+        blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+      }
     }
   }
 }
