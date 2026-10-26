@@ -1063,19 +1063,16 @@ async function findConversationTab() {
   return tabs && tabs.length ? tabs[0] : null;
 }
 
-// Liệt kê các hội thoại CHƯA ĐỌC (có class "unread" trên .item) trong tab tin
-// nhắn. CHỈ lấy item chưa đọc để không click nhầm vào mọi hội thoại. Trả [{id, name}].
-async function listUnreadConversations(tabId) {
+// Liệt kê hội thoại theo chế độ: "unread" = chưa đọc; "recent5" = 5 box gần nhất bất kể trạng thái đọc.
+async function listConversations(tabId, scanMode = "unread") {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
-      func: function () {
-        // Item hội thoại thật: ".item" của vpage. Chưa đọc = có class "unread".
-        // CHỈ lấy tối đa 5 box chưa đọc ĐẦU TIÊN (từ trên xuống = gần nhất).
-        const MAX_UNREAD_SCAN = 5;
-        const items = Array.from(document.querySelectorAll(".item.unread"))
+      func: function (mode) {
+        const selector = mode === "recent5" ? ".item" : ".item.unread";
+        const items = Array.from(document.querySelectorAll(selector))
           .filter((el) => el.offsetParent !== null)
-          .slice(0, MAX_UNREAD_SCAN);
+          .slice(0, 5);
         const out = [];
         items.forEach((it, idx) => {
           const name = (it.querySelector("b.name")?.innerText
@@ -1091,25 +1088,26 @@ async function listUnreadConversations(tabId) {
           out.push({ id, name });
         });
         return { list: out, total: items.length };
-      }
+      },
+      args: [scanMode]
     });
     const r = (results && results[0] && results[0].result) || { list: [] };
-    blog(`listUnread: lấy ${r.total} box CHƯA ĐỌC gần nhất (tối đa 5, từ trên xuống).`);
+    blog(`listConversations: chế độ ${scanMode}, lấy ${r.total} box gần nhất (tối đa 5).`);
     return r.list || [];
   } catch (e) {
-    blog("listUnreadConversations lỗi:", e.message);
+    blog("listConversations lỗi:", e.message);
     return [];
   }
 }
 
-// Click MỞ 1 hội thoại CHƯA ĐỌC theo KHÓA ỔN ĐỊNH (id). Re-query tươi tập unread
-// để tránh click nhầm do danh sách đổi sau lần mở trước.
-async function openConversationById(tabId, convId) {
+// Click mở hội thoại theo khóa ổn định; recent5 tìm trong tất cả box vì khi mở, box có thể chuyển trạng thái đã đọc.
+async function openConversationById(tabId, convId, scanMode = "unread") {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
-      func: function (wantId) {
-        const items = Array.from(document.querySelectorAll(".item.unread"))
+      func: function (wantId, mode) {
+        const selector = mode === "recent5" ? ".item" : ".item.unread";
+        const items = Array.from(document.querySelectorAll(selector))
           .filter((el) => el.offsetParent !== null);
         const idOf = (it, idx) => {
           const a = it.querySelector("a[href]");
@@ -1136,7 +1134,7 @@ async function openConversationById(tabId, convId) {
         if (typeof el.click === "function") el.click();
         return { ok: true };
       },
-      args: [convId]
+      args: [convId, scanMode]
     });
     return !!(results && results[0] && results[0].result && results[0].result.ok);
   } catch (e) {
@@ -1235,7 +1233,7 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
-    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3",
+    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread",
     autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
@@ -1253,10 +1251,13 @@ async function runScanCycle() {
   const tab = await findConversationTab();
   if (!tab) { blog("Quét: không có tab vpage mở -> bỏ qua."); return; }
 
-  // CHỈ quét các hội thoại CHƯA ĐỌC (.item.unread).
-  const unread = await listUnreadConversations(tab.id);
-  blog(`Quét: ${unread.length} hội thoại CHƯA ĐỌC.`);
-  if (!unread.length) return;
+  // Chọn danh sách theo cấu hình: chỉ chưa đọc (mặc định) hoặc 5 box gần nhất.
+  const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
+  const conversations = await listConversations(tab.id, scanMode);
+  blog(scanMode === "recent5"
+    ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
+    : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
+  if (!conversations.length) return;
 
   // Chống gửi trùng: lưu key (phone/text) đã thông báo (dọn mục > 24h).
   const st = await chrome.storage.local.get({ tgNotified: {} });
@@ -1265,10 +1266,10 @@ async function runScanCycle() {
   for (const k of Object.keys(notified)) if (now - notified[k] > 86400000) delete notified[k];
 
   let scanned = 0, sent = 0;
-  for (const conv of unread) {
+  for (const conv of conversations) {
     scanned++;
     // 1) Click mở hội thoại (theo khóa ổn định).
-    const opened = await openConversationById(tab.id, conv.id);
+    const opened = await openConversationById(tab.id, conv.id, scanMode);
     if (!opened) { blog(`Quét: không mở được hội thoại "${conv.name}".`); continue; }
 
     // 2) Chờ khung chat nạp tin nhắn (~2.5s).
@@ -1386,7 +1387,7 @@ async function runScanCycle() {
     await new Promise((r) => setTimeout(r, 400));
   }
   await chrome.storage.local.set({ tgNotified: notified });
-  blog(`Quét xong: duyệt ${scanned}/${unread.length} hội thoại chưa đọc, gửi ${sent} đơn mới.`);
+  blog(`Quét xong: duyệt ${scanned}/${conversations.length} box (${scanMode === "recent5" ? "5 box gần nhất" : "chưa đọc"}), gửi ${sent} đơn mới.`);
 }
 
 function escapeHtml(s) {
