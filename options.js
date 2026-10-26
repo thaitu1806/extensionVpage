@@ -180,20 +180,12 @@ $("pullTest").addEventListener("click", () => {
   const secret = $("pullSecret").value.trim();
   if (!base) { st.textContent = "Nhập Worker URL trước."; st.className = "status err"; return; }
 
-  // /health không cần secret; /pull cần secret -> thử cả hai để báo rõ.
-  fetch(base + "/health")
-    .then((r) => r.json())
-    .then((h) => {
-      if (!h || !h.ok) throw new Error("health không ok");
-      return fetch(base + "/pull", { headers: { "x-pull-secret": secret } });
-    })
-    .then((r) => r.json().then((j) => ({ status: r.status, j })))
-    .then(({ status, j }) => {
-      if (status === 401) { st.textContent = "Kết nối OK nhưng Pull Secret SAI."; st.className = "status err"; return; }
-      if (j && j.ok) { st.textContent = `Kết nối OK. Đang có ${j.commands ? j.commands.length : 0} lệnh chờ.`; st.className = "status ok"; }
-      else { st.textContent = "Lỗi: " + ((j && j.error) || "không rõ"); st.className = "status err"; }
-    })
-    .catch((e) => { st.textContent = "Không kết nối được Worker: " + e.message; st.className = "status err"; });
+  fetch(base + "/health").then((r) => r.json()).then((h) => {
+    if (!h || !h.ok || h.mode !== "queue-push") throw new Error("Worker chưa deploy bản Queue Push mới.");
+    if (!secret) throw new Error("Chưa nhập Secret kết nối.");
+    st.textContent = "Worker OK (Queue Push). WebSocket kết nối khi bật nhận lệnh và lưu cấu hình.";
+    st.className = "status ok";
+  }).catch((e) => { st.textContent = "Kiểm tra thất bại: " + e.message; st.className = "status err"; });
 });
 
 document.addEventListener("DOMContentLoaded", load);
