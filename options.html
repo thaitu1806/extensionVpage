@@ -101,7 +101,7 @@
 
     <div class="divider"></div>
     <h1 style="font-size:16px;">Lên đơn tự động từ Telegram (Cloudflare Worker)</h1>
-    <p class="desc">Bấm nút "Lên đơn tự động" trên điện thoại → Worker nhận lệnh → extension tự lên đơn. Cần máy tính mở sẵn trang vpage.nhanh.vn và đã đăng nhập.</p>
+    <p class="desc">Bấm nút "Lên đơn" trên Telegram → Queue kích hoạt Consumer → extension nhận lệnh qua WebSocket, không polling KV. Cần Chrome mở và đã đăng nhập Vpage.</p>
 
     <label><input type="checkbox" id="autoFillEnabled" style="width:auto;margin-right:6px;" />Bật nhận lệnh lên đơn tự động từ Telegram</label>
 
@@ -109,9 +109,9 @@
     <input type="text" id="workerUrl" placeholder="https://lendon-telegram-bridge.<tài_khoản>.workers.dev" autocomplete="off" />
     <div class="hint">URL Worker sau khi deploy (không có dấu / ở cuối).</div>
 
-    <label for="pullSecret">Pull Secret</label>
+    <label for="pullSecret">Secret kết nối</label>
     <input type="password" id="pullSecret" placeholder="chuỗi bí mật trùng với PULL_SECRET của Worker" autocomplete="off" />
-    <div class="hint">Phải trùng với biến <b>PULL_SECRET</b> đã đặt cho Worker.</div>
+    <div class="hint">Phải trùng với biến <b>PULL_SECRET</b> của Worker; dùng để xác thực WebSocket và ACK lệnh.</div>
 
     <button id="pullTest" style="background:#f59e0b; margin-top:10px;">Kiểm tra kết nối Worker</button>
     <div class="status" id="pullStatus"></div>
