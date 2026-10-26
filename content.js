@@ -1051,26 +1051,42 @@ async function toggleTwoLevelAddress() {
 // Tạo chuỗi tìm địa giới. ƯU TIÊN gõ KÈM LOẠI (Phường/Xã Tân Mỹ) trước,
 // vì tên trùng ở nhiều tỉnh (HCM có Phường Tân Mỹ, Tuyên Quang có Xã Tân Mỹ).
 function buildRegionQueries(regionText) {
-  const parts = regionText.split(",").map((s) => s.trim()).filter(Boolean);
+  const stripType = (s) => (s || "")
+    .replace(/^(phường|xã|thị trấn|thị xã|quận|huyện|thành phố|tỉnh|tp\.?)\s*/i, "")
+    .trim();
+  const parts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
+
+  // Vpage chỉ có tên tỉnh/thành chuẩn trong danh sách. Đưa mọi biến thể
+  // HCM/TP.HCM/TP HCM/Thành phố Hồ Chí Minh... về "Hồ Chí Minh".
+  if (parts.length) {
+    const last = parts.length - 1;
+    const provinceKey = canonicalProvince(parts[last]);
+    if (provinceKey === "ho chi minh") {
+      parts[last] = "Hồ Chí Minh";
+    } else {
+      // Bỏ tiền tố hành chính khỏi tên tỉnh/thành khi dùng làm từ khóa tìm.
+      parts[last] = stripType(parts[last]);
+    }
+  }
+
   const queries = [];
   if (parts.length) {
     const first = parts[0]; // ví dụ "Phường Tân Mỹ" / "Phường 9"
     const district = parts.length >= 3 ? parts[1] : ""; // "Quận 8"
-    const stripType = (s) => s.replace(/^(phường|xã|thị trấn|thị xã|quận|huyện|thành phố|tỉnh|tp\.?)\s+/i, "").trim();
     const firstName = stripType(first);
 
-    // 1) Phường + QUẬN ("Phường 9 Quận 8") - ưu tiên nhất để nhanh.vn trả
-    //    đúng phường trong đúng quận (tránh phường trùng số/tên ở quận khác).
+    // 1) Phường + QUẬN để tránh nhầm phường trùng tên/số.
     if (district) queries.push(`${first} ${district}`);
-    // 2) Cụm đầu ĐẦY ĐỦ có loại ("Phường Tân Mỹ") - lọc đúng loại.
+    // 2) Giữ loại Phường/Xã trong từ khóa để lọc đúng loại.
     queries.push(first);
-    // 3) Tên không tiền tố ("Tân Mỹ") - dự phòng nếu trên không ra.
+    // 3) Dự phòng bỏ tiền tố của phường/xã.
     if (firstName && firstName !== first) queries.push(firstName);
-    // 4) Cả cụm dài.
+
+    // 4) Cụm dài nhưng tỉnh/thành đã được chuẩn hóa và bỏ tiền tố.
     queries.push(parts.join(", "));
     queries.push(parts.join(" "));
   } else {
-    queries.push(regionText);
+    queries.push(stripType(regionText));
   }
   return [...new Set(queries)].filter(Boolean);
 }
