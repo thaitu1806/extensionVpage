@@ -64,6 +64,21 @@ function normalizeMoneyFields(obj) {
   return obj;
 }
 
+// Bỏ cấp Quận 2 / Quận 9 cũ khỏi phần hành chính TP.HCM.
+// Chỉ xử lý addressRegion (không đụng phần số nhà/đường) và chỉ khi địa chỉ
+// có dấu hiệu thuộc TP.HCM/TP Thủ Đức để tránh xóa nhầm địa danh ở nơi khác.
+function removeObsoleteHcmDistricts(region) {
+  if (!region) return "";
+  const isHcm = /hồ\s*chí\s*minh|ho\s*chi\s*minh|\bhcm\b|sài\s*gòn|sai\s*gon|thủ\s*đức|thu\s*duc/i.test(region);
+  if (!isHcm) return region;
+  const obsoleteDistrict = /^(?:quận\s*[29]|q\.?\s*[29])$/i;
+  return region.split(",")
+    .map((part) => part.trim())
+    .filter((part) => part && !obsoleteDistrict.test(part))
+    .join(", ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 function cleanAddress(addr) {
   return addr
     .replace(/\s*,\s*,\s*/g, ", ") // bỏ dấu phẩy rỗng ", ,"
@@ -264,7 +279,11 @@ function parseOrderConfirmation(text) {
   fullAddress = cleanAddress(fullAddress);
 
   // Tách địa chỉ chi tiết (đường/nhà) và phần hành chính (Phường/Xã, Quận/Huyện, Tỉnh).
-  const { address, addressRegion } = splitAddress(fullAddress);
+  const { address, addressRegion: rawAddressRegion } = splitAddress(fullAddress);
+  const addressRegion = removeObsoleteHcmDistricts(rawAddressRegion);
+  if (addressRegion !== rawAddressRegion) {
+    blog(`Đã tiền xử lý địa chỉ hành chính cũ: "${rawAddressRegion}" -> "${addressRegion}"`);
+  }
 
   const productsBlock = grab("Sản phẩm:", STOPS);
   blog("DIAG parseOrderConfirmation: productsBlock =", JSON.stringify(productsBlock));
@@ -910,8 +929,9 @@ async function runFill(tabId, options = {}) {
       blog("Chuẩn hóa địa chỉ (AI):", JSON.stringify(norm));
       if (norm && (norm.ward || norm.province)) {
         extracted.address = norm.detail || extracted.address;
-        extracted.addressRegion = [norm.ward, norm.district, norm.province].filter(Boolean).join(", ");
-        extracted.addressRegion2 = [norm.ward, norm.province].filter(Boolean).join(", ");
+        const normalizedRegion = [norm.ward, norm.district, norm.province].filter(Boolean).join(", ");
+        extracted.addressRegion = removeObsoleteHcmDistricts(normalizedRegion);
+        extracted.addressRegion2 = removeObsoleteHcmDistricts([norm.ward, norm.province].filter(Boolean).join(", "));
       }
     } catch (e) {
       blog("Chuẩn hóa địa chỉ lỗi (giữ nguyên):", e.message);
