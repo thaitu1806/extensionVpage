@@ -1467,50 +1467,53 @@ async function fillOrderByPhone(phone) {
   }
 }
 
-// Poll Worker lấy lệnh lên đơn, xử lý tuần tự, ack sau mỗi lệnh.
-let _pullBusy = false;
-async function runPullCycle() {
-  if (_pullBusy) { blog("Poll: đang bận lượt trước -> bỏ qua."); return; }
-  const cfg = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
-  // Chỉ cần có Worker URL là poll (nút Lên đơn trên Telegram hiện theo workerUrl).
-  if (!cfg.workerUrl) return;
-
-  _pullBusy = true;
+/* ============== PUSH LỆNH QUA WEBSOCKET ============== */
+let _commandSocket = null;
+let _socketReconnectTimer = null;
+let _processingCommands = new Set();
+function connectCommandSocket() {
+  if (_commandSocket && (_commandSocket.readyState === WebSocket.OPEN || _commandSocket.readyState === WebSocket.CONNECTING)) return;
+  chrome.storage.local.get({ workerUrl: "", pullSecret: "", autoFillEnabled: false }, (cfg) => {
+    if (!cfg.autoFillEnabled || !cfg.workerUrl || !cfg.pullSecret) return;
+    try {
+      const base = cfg.workerUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:").replace(/\/+$/, "");
+      const ws = new WebSocket(base + "/ws?secret=" + encodeURIComponent(cfg.pullSecret));
+      _commandSocket = ws;
+      ws.onopen = () => blog("Push: WebSocket đã kết nối; không polling KV.");
+      ws.onmessage = (event) => { let msg; try { msg = JSON.parse(event.data); } catch (_) { return; } if (msg.type === "command" && msg.command) processPushedCommand(msg.command); };
+      ws.onerror = () => blog("Push: WebSocket gặp lỗi.");
+      ws.onclose = () => { if (_commandSocket === ws) _commandSocket = null; if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer); _socketReconnectTimer = setTimeout(connectCommandSocket, 5000); blog("Push: WebSocket đóng; sẽ kết nối lại sau 5 giây."); };
+    } catch (e) { blog("Push: lỗi tạo WebSocket:", e.message); _socketReconnectTimer = setTimeout(connectCommandSocket, 10000); }
+  });
+}
+async function processPushedCommand(cmd) {
+  if (!cmd || !cmd.id || !cmd.phone || _processingCommands.has(cmd.id)) return;
+  _processingCommands.add(cmd.id);
   try {
-    const base = cfg.workerUrl.replace(/\/+$/, "");
-    const resp = await fetch(base + "/pull", {
-      headers: { "x-pull-secret": cfg.pullSecret || "" }
-    });
-    if (!resp.ok) { blog(`Poll: /pull HTTP ${resp.status}`); return; }
-    const data = await resp.json().catch(() => null);
-    const commands = (data && data.commands) || [];
-    if (!commands.length) return;
-
-    blog(`Poll: nhận ${commands.length} lệnh lên đơn.`);
-    for (const cmd of commands) {
-      if (!cmd || !cmd.phone || !cmd.id) continue;
-      try {
-        await fillOrderByPhone(cmd.phone);
-      } catch (e) {
-        blog(`Poll: lên đơn lỗi cho ${cmd.phone}: ${e.message}`);
-      }
-      // ACK để Worker xóa lệnh (dù thành công hay lỗi, tránh lặp vô hạn).
-      try {
-        await fetch(base + "/ack", {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-pull-secret": cfg.pullSecret || "" },
-          body: JSON.stringify({ id: cmd.id })
-        });
-        blog(`Poll: đã ack lệnh ${cmd.id}.`);
-      } catch (e) {
-        blog(`Poll: ack lỗi ${cmd.id}: ${e.message}`);
-      }
-    }
-  } catch (e) {
-    blog("Poll lỗi:", e.message);
-  } finally {
-    _pullBusy = false;
-  }
+    const state = await chrome.storage.local.get({ completedCommandIds: [] });
+    const completed = Array.isArray(state.completedCommandIds) ? state.completedCommandIds : [];
+    if (completed.includes(cmd.id)) { await ackPushedCommand(cmd.id); return; }
+    blog(`Push: nhận lệnh ${cmd.id} cho ${cmd.phone}.`);
+    try { await fillOrderByPhone(cmd.phone); } catch (e) { blog(`Push: lên đơn lỗi cho ${cmd.phone}: ${e.message}`); }
+    await chrome.storage.local.set({ completedCommandIds: [...completed.filter(id => id !== cmd.id), cmd.id].slice(-500) });
+    await ackPushedCommand(cmd.id);
+    blog(`Push: đã ACK lệnh ${cmd.id}; nếu thao tác lỗi hãy kiểm tra log.`);
+  } catch (e) { blog(`Push: xử lý lệnh ${cmd.id} lỗi:`, e.message); }
+  finally { _processingCommands.delete(cmd.id); }
+}
+async function ackPushedCommand(id) {
+  const cfg = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
+  if (!cfg.workerUrl || !cfg.pullSecret) throw new Error("Thiếu Worker URL/Secret");
+  const resp = await fetch(cfg.workerUrl.replace(/\/+$/, "") + "/ack", {
+    method: "POST", headers: { "content-type": "application/json", "x-pull-secret": cfg.pullSecret },
+    body: JSON.stringify({ id })
+  });
+  if (!resp.ok) throw new Error("ACK HTTP " + resp.status);
+}
+function disconnectCommandSocket() {
+  if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer);
+  _socketReconnectTimer = null;
+  if (_commandSocket) { _commandSocket.onclose = null; try { _commandSocket.close(); } catch (_) {} _commandSocket = null; }
 }
 
 // Khóa chống chạy chồng nhiều lượt quét nếu một lượt mất hơn chu kỳ alarm.
@@ -1542,27 +1545,25 @@ async function ensureBackgroundAlarms() {
   } else {
     blog(`Alarm ds-scan đang hoạt động, chu kỳ ${scan.periodInMinutes} phút.`);
   }
-  const pull = await chrome.alarms.get("ds-pull");
-  if (!pull) {
-    await chrome.alarms.create("ds-pull", { periodInMinutes: 0.5 });
-    blog("Đã tạo lại alarm ds-pull (30 giây).");
-  }
-}
+  await chrome.alarms.clear("ds-pull"); // Ngừng polling KV cũ.
+  connectCommandSocket();}
 ensureBackgroundAlarms().catch((e) => blog("Không khởi tạo được alarm:", e.message));
 chrome.runtime.onStartup.addListener(() => {
   ensureBackgroundAlarms().catch((e) => blog("onStartup tạo alarm lỗi:", e.message));
+  connectCommandSocket();
 });
 chrome.runtime.onInstalled.addListener(() => {
   ensureBackgroundAlarms().catch((e) => blog("onInstalled tạo alarm lỗi:", e.message));
+  connectCommandSocket();
 });
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === "local" && changes.scanIntervalMinutes) {
-    ensureBackgroundAlarms().catch((e) => blog("Cập nhật chu kỳ quét lỗi:", e.message));
-  }
+  if (areaName !== "local") return;
+  if (changes.scanIntervalMinutes) ensureBackgroundAlarms().catch((e) => blog("Cập nhật chu kỳ quét lỗi:", e.message));
+  if (changes.workerUrl || changes.pullSecret || changes.autoFillEnabled) { disconnectCommandSocket(); connectCommandSocket(); }
 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === "ds-scan") runScanCycleSafe();
-  else if (a.name === "ds-pull") runPullCycle().catch((e) => blog("runPullCycle lỗi:", e.message));
+
 });
 
 // Handler test Telegram từ Options.
