@@ -1056,15 +1056,20 @@ function buildRegionQueries(regionText) {
     .trim();
   const parts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
 
-  // Vpage chỉ có tên tỉnh/thành chuẩn trong danh sách. Đưa mọi biến thể
-  // HCM/TP.HCM/TP HCM/Thành phố Hồ Chí Minh... về "Hồ Chí Minh".
+  // Chỉ chuẩn hóa CẤP TỈNH/THÀNH PHỐ (cụm cuối cùng), không đụng
+  // đến tiền tố Phường/Xã/Quận/Huyện ở các cấp địa giới bên dưới.
+  // HCM/TP.HCM/TP HCM... -> "Hồ Chí Minh"; các tỉnh/thành khác cũng bỏ
+  // tiền tố "Tỉnh", "Thành phố", "TP."... (vd "Tỉnh An Giang" -> "An Giang").
   if (parts.length) {
     const last = parts.length - 1;
     const provinceKey = canonicalProvince(parts[last]);
     if (provinceKey === "ho chi minh") {
       parts[last] = "Hồ Chí Minh";
+    } else if (provinceKey === "ha noi") {
+      parts[last] = "Hà Nội";
+    } else if (provinceKey === "da nang") {
+      parts[last] = "Đà Nẵng";
     } else {
-      // Bỏ tiền tố hành chính khỏi tên tỉnh/thành khi dùng làm từ khóa tìm.
       parts[last] = stripType(parts[last]);
     }
   }
