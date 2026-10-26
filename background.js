@@ -1532,10 +1532,13 @@ async function runScanCycleSafe() {
 
 // Đảm bảo alarm được tạo lại khi Chrome khởi động hoặc extension được cài/cập nhật.
 async function ensureBackgroundAlarms() {
+  const cfg = await chrome.storage.local.get({ scanIntervalMinutes: 3 });
+  const minutes = Math.max(1, Math.min(1440, Number.parseInt(cfg.scanIntervalMinutes, 10) || 3));
   const scan = await chrome.alarms.get("ds-scan");
-  if (!scan) {
-    await chrome.alarms.create("ds-scan", { periodInMinutes: 3 });
-    blog("Đã tạo lại alarm ds-scan (mỗi 3 phút).");
+  if (!scan || scan.periodInMinutes !== minutes) {
+    await chrome.alarms.clear("ds-scan");
+    await chrome.alarms.create("ds-scan", { periodInMinutes: minutes });
+    blog(`Đã cấu hình alarm ds-scan mỗi ${minutes} phút.`);
   } else {
     blog(`Alarm ds-scan đang hoạt động, chu kỳ ${scan.periodInMinutes} phút.`);
   }
@@ -1551,6 +1554,11 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.runtime.onInstalled.addListener(() => {
   ensureBackgroundAlarms().catch((e) => blog("onInstalled tạo alarm lỗi:", e.message));
+});
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.scanIntervalMinutes) {
+    ensureBackgroundAlarms().catch((e) => blog("Cập nhật chu kỳ quét lỗi:", e.message));
+  }
 });
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === "ds-scan") runScanCycleSafe();
