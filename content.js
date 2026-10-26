@@ -434,10 +434,16 @@ async function fillForm(data) {
     if (okStatus) done.push(`trạng thái ${requestedStatus}`);
     if (!okStatus) throw new Error(`Webhook: không chọn được trạng thái '${requestedStatus}'; không lưu đơn.`);
 
-    const saved = await clickSaveButton(45000);
-    if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
-    done.push("lưu");
-    // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.
+    const cfgSubmit = await chrome.storage.local.get({ autoSubmitOrder: false });
+    if (cfgSubmit.autoSubmitOrder) {
+      const saved = await clickSaveButton(45000);
+      if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
+      done.push("lưu");
+      // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.
+    } else {
+      log("Webhook: chế độ kiểm thử — đã điền form nhưng KHÔNG bấm Lưu; giữ tab mở để kiểm tra.");
+      done.push("chưa lưu (chế độ kiểm thử)");
+    }
   } else {
     const okStatus = setOrderStatus("Đã xác nhận");
     log(`-> chọn trạng thái 'Đã xác nhận' = ${okStatus}`);
@@ -447,7 +453,9 @@ async function fillForm(data) {
   log("KẾT: đã điền:", done.join(", "), productInfo);
   return {
     filled: done.length > 0 || productInfo !== "",
-    info: "Đã điền: " + (done.join(", ") || "(trống)") + productInfo
+    info: "Đã điền: " + (done.join(", ") || "(trống)") + productInfo,
+    reviewRequired: data.mode === "webhook" && !((await chrome.storage.local.get({ autoSubmitOrder: false })).autoSubmitOrder),
+    submitted: data.mode === "webhook" && !!((await chrome.storage.local.get({ autoSubmitOrder: false })).autoSubmitOrder)
   };
 }
 
