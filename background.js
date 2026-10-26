@@ -1236,7 +1236,7 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
     tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3",
-    autoFillEnabled: false, workerUrl: ""
+    autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
     blog("Quét bỏ qua: tùy chọn tự động quét Telegram đang tắt (tgEnabled=false).");
@@ -1351,8 +1351,25 @@ async function runScanCycle() {
     const markup = buttons.length ? { inline_keyboard: buttons } : undefined;
 
     const r = await tgSend(cfg.tgToken, cfg.tgChatId, text, markup);
-    if (r.ok) { notified[key] = now; sent++; blog(`Đã gửi TG đơn của "${conv.name}" (key=${key}).`); }
-    else blog(`Gửi TG lỗi cho "${conv.name}": ${r.error}`);
+    if (r.ok) {
+      notified[key] = now;
+      sent++;
+      blog(`Đã gửi TG đơn của "${conv.name}" (key=${key}).`);
+
+      // Tùy chọn: tự lên đơn ngay khi đã gửi thông báo Telegram thành công,
+      // không cần người dùng bấm nút inline "Lên đơn".
+      if (cfg.autoOrderOnNotify && cfg.autoFillEnabled && phone) {
+        try {
+          blog(`AutoOrderOnNotify: tự động lên đơn cho ${phone} sau thông báo Telegram.`);
+          const autoResult = await fillOrderByPhone(phone);
+          blog(`AutoOrderOnNotify: kết quả lên đơn ${phone}: ${JSON.stringify(autoResult).slice(0, 300)}`);
+        } catch (e) {
+          blog(`AutoOrderOnNotify: lên đơn tự động lỗi cho ${phone}: ${e?.message || e}`);
+        }
+      } else if (cfg.autoOrderOnNotify && !cfg.autoFillEnabled) {
+        blog("AutoOrderOnNotify đang bật nhưng nhận lệnh lên đơn tự động (autoFillEnabled) đang tắt; bỏ qua.");
+      }
+    } else blog(`Gửi TG lỗi cho "${conv.name}": ${r.error}`);
 
     // Nhịp nhẹ giữa các hội thoại.
     await new Promise((r) => setTimeout(r, 400));
