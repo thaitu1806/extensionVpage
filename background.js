@@ -1297,7 +1297,12 @@ async function runScanCycle() {
         "ℹ️ Có thể AI chưa kịp tạo đơn hoặc chốt đơn tự động bị lỗi. Vui lòng kiểm tra hội thoại."
       ].filter(Boolean).join("\n");
       const fallbackUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`;
-      const fallbackButtons = [[{ text: "💬 Mở hội thoại", url: fallbackUrl }]];
+      const fallbackButtons = [];
+      // Có SĐT và đã cấu hình Worker thì hiện nút Lên đơn như thông báo đơn chuẩn.
+      if (contact.phone && cfg.workerUrl) {
+        fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${contact.phone}` }]);
+      }
+      fallbackButtons.push([{ text: "💬 Mở hội thoại", url: fallbackUrl }]);
       const fallbackResult = await tgSend(cfg.tgToken, cfg.tgChatId, fallbackText, { inline_keyboard: fallbackButtons });
       if (fallbackResult.ok) {
         notified[fallbackKey] = now;
