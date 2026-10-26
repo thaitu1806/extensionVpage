@@ -104,6 +104,12 @@
     <p class="desc">Bấm nút "Lên đơn" trên Telegram → Queue kích hoạt Consumer → extension nhận lệnh qua WebSocket, không polling KV. Cần Chrome mở và đã đăng nhập Vpage.</p>
 
     <label><input type="checkbox" id="autoFillEnabled" style="width:auto;margin-right:6px;" />Bật nhận lệnh lên đơn tự động từ Telegram</label>
+    <label for="autoOrderStatus">Trạng thái đơn khi lên đơn tự động</label>
+    <select id="autoOrderStatus">
+      <option value="Mới">Mới (mặc định — dùng khi kiểm thử)</option>
+      <option value="Đã xác nhận">Đã xác nhận (dùng khi đã sẵn sàng gửi đơn)</option>
+    </select>
+    <div class="hint">Chọn “Mới” để kiểm thử an toàn. Khi quy trình đã ổn định, chuyển sang “Đã xác nhận” để đơn được tự động xác nhận/gửi theo quy trình Vpage.</div>
 
     <label for="workerUrl">Cloudflare Worker URL</label>
     <input type="text" id="workerUrl" placeholder="https://lendon-telegram-bridge.<tài_khoản>.workers.dev" autocomplete="off" />
