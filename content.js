@@ -262,22 +262,61 @@ async function waitForOrderForm(timeout = 4000) {
   return hasOrderForm();
 }
 
-function clickSaveButton() {
-  const candidates = Array.from(document.querySelectorAll(
-    "button.btn-success, button, [role='button'], input[type='button'], input[type='submit']"
-  )).filter((el) => el.offsetParent !== null && !el.disabled);
-  const button = candidates.find((el) => {
-    const label = (el.innerText || el.textContent || el.value || el.getAttribute("aria-label") || "")
-      .replace(/\s+/g, " ").trim();
-    return /(?:^|\s)(?:\(F9\)\s*)?Lưu(?:\s|$)/i.test(label) || /\(F9\)\s*Lưu/i.test(label);
-  });
-  if (!button) {
-    log("Webhook auto-save: không tìm thấy nút Lưu.");
-    return false;
+// Chờ nút Lưu được enable sau khi Vpage tải xong dữ liệu (đặc biệt hãng vận chuyển).
+async function clickSaveButton(timeout = 45000) {
+  const started = Date.now();
+  let lastState = "";
+  while (Date.now() - started < timeout) {
+    const candidates = Array.from(document.querySelectorAll(
+      "button.btn-success, button, [role='button'], input[type='button'], input[type='submit']"
+    )).filter((el) => el.offsetParent !== null);
+    const button = candidates.find((el) => {
+      const label = (el.innerText || el.textContent || el.value || el.getAttribute("aria-label") || "")
+        .replace(/\s+/g, " ").trim();
+      return /(?:^|\s)(?:\(F9\)\s*)?Lưu(?:\s|$)/i.test(label) || /\(F9\)\s*Lưu/i.test(label);
+    });
+    if (button) {
+      const disabled = !!button.disabled
+        || button.getAttribute("aria-disabled") === "true"
+        || button.classList.contains("disabled");
+      const state = disabled ? "disabled" : "enabled";
+      if (state !== lastState) {
+        log(`Webhook auto-save: nút Lưu đang ${state}; chờ dữ liệu form/hãng vận chuyển...`);
+        lastState = state;
+      }
+      if (!disabled) {
+        log("Webhook auto-save: click nút Lưu:", (button.innerText || button.textContent || "").trim());
+        button.click();
+        // Giữ tab mở để Vpage xử lý request lưu; không trả về ngay lập tức.
+        await sleep(1000);
+        const saveStarted = Date.now();
+        let sawSaving = false;
+        while (Date.now() - saveStarted < 20000) {
+          const current = candidates.find((el) => {
+            const label = (el.innerText || el.textContent || el.value || el.getAttribute("aria-label") || "")
+              .replace(/\s+/g, " ").trim();
+            return /(?:^|\s)(?:\(F9\)\s*)?Lưu(?:\s|$)/i.test(label) || /\(F9\)\s*Lưu/i.test(label);
+          });
+          if (current && (current.disabled || current.getAttribute("aria-disabled") === "true"
+            || current.classList.contains("disabled"))) sawSaving = true;
+          // Chờ ít nhất 3 giây để request lưu có thời gian hoàn tất.
+          if (Date.now() - saveStarted >= 3000 && (!current || !current.disabled) && sawSaving) {
+            log("Webhook auto-save: nút Lưu đã hết trạng thái xử lý.");
+            return true;
+          }
+          await sleep(300);
+        }
+        log("Webhook auto-save: đã click Lưu và chờ tối đa 20 giây; không thấy trạng thái hoàn tất rõ ràng.");
+        return true;
+      }
+    } else if (lastState !== "missing") {
+      log("Webhook auto-save: chưa thấy nút Lưu; tiếp tục chờ form tải...");
+      lastState = "missing";
+    }
+    await sleep(300);
   }
-  log("Webhook auto-save: click nút Lưu:", (button.innerText || button.textContent || "").trim());
-  button.click();
-  return true;
+  log(`Webhook auto-save: nút Lưu không enable sau ${timeout / 1000} giây; hủy đóng như thành công.`);
+  return false;
 }
 
 async function fillForm(data) {
@@ -411,10 +450,10 @@ async function fillForm(data) {
     if (okStatus) done.push("trạng thái Mới");
     if (!okStatus) throw new Error("Webhook: không chọn được trạng thái 'Mới'; không lưu đơn.");
 
-    const saved = clickSaveButton();
+    const saved = await clickSaveButton(45000);
     if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
     done.push("lưu");
-    await sleep(1800); // đợi thao tác lưu được gửi trước khi background đóng tab.
+    await sleep(1000); // clickSaveButton đã chờ request lưu xử lý trước khi trả về.
   } else {
     const okStatus = setOrderStatus("Đã xác nhận");
     log(`-> chọn trạng thái 'Đã xác nhận' = ${okStatus}`);
