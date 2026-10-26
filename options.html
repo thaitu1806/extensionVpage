@@ -83,7 +83,10 @@
     <div class="divider"></div>
     <h1 style="font-size:16px;">Thông báo Telegram (tự động quét đơn mới)</h1>
 
-    <label><input type="checkbox" id="tgEnabled" style="width:auto;margin-right:6px;" />Bật tự động quét hội thoại chưa đọc mỗi 3 phút</label>
+    <label><input type="checkbox" id="tgEnabled" style="width:auto;margin-right:6px;" />Bật tự động quét hội thoại chưa đọc</label>
+    <label for="scanIntervalMinutes">Chu kỳ tự động quét (phút)</label>
+    <input type="number" id="scanIntervalMinutes" min="1" max="1440" step="1" value="3" />
+    <div class="hint">Mặc định 3 phút. Chọn từ 1 đến 1440 phút; lịch quét được cập nhật khi bấm Lưu cấu hình.</div>
 
     <label for="tgToken">Telegram Bot Token</label>
     <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." autocomplete="off" />
