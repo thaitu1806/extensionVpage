@@ -6,6 +6,17 @@
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
+// Chặn lên đơn nếu một trong 3 tin nhắn gần nhất có nội dung "Theo dõi vận chuyển".
+function normalizeTrackingText(value = "") {
+  return String(value).toLowerCase().replace(/đ/g, "d")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim();
+}
+function hasRecentTrackingInbox(messages) {
+  return (Array.isArray(messages) ? messages : []).slice(-3)
+    .some((message) => normalizeTrackingText(message).includes("theo doi van chuyen"));
+}
+
 /* ============== PARSE KHỐI XÁC NHẬN ĐƠN ============== */
 // Dạng mẫu (từ "Tin nhắn CSKH tự động"):
 //   Mã đơn hàng: 869721432
@@ -69,6 +80,14 @@ function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
   const parts = full.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length <= 1) return { address: full, addressRegion: "" };
+
+  // Tách phường/xã bị viết liền với số nhà/đường, ví dụ:
+  // "94/7a Quang Trung xã Hóc Môn, Tp. HCM".
+  const inlineWard = parts[0].match(/^(.*?)(?:\s+)((?:phường|xã|thị trấn)\s+.+)$/i);
+  if (inlineWard && inlineWard[1].trim() && inlineWard[2].trim()) {
+    parts[0] = inlineWard[2].trim();
+    parts.unshift(inlineWard[1].trim());
+  }
 
   // Phần hành chính CHUẨN nằm ở CUỐI, mỗi cụm bắt đầu bằng từ loại địa giới.
   const startsWithType = (p) =>
@@ -753,12 +772,12 @@ async function openOrderTab(tabId) {
   return clickedAny;
 }
 
-async function fillForm(tabId, extracted) {
+async function fillForm(tabId, extracted, options = {}) {
   // Ưu tiên frame crmadd trước để không điền nhầm vào trang chat.
   const frames = orderFramesFirst(await getFrames(tabId));
   for (const { frameId } of frames) {
     try {
-      const res = await sendToFrame(tabId, frameId, { type: "FILL_FORM", data: extracted });
+      const res = await sendToFrame(tabId, frameId, { type: "FILL_FORM", data: extracted, mode: options.mode || "manual" });
       blog(`frame ${frameId}: FILL_FORM -> ${JSON.stringify(res)}`);
       if (res && res.filled) return res;
     } catch (e) {
@@ -770,8 +789,9 @@ async function fillForm(tabId, extracted) {
 
 /* ============== LUỒNG CHÍNH ============== */
 
-async function runFill(tabId) {
-  blog("=== BẮT ĐẦU RUN_FILL cho tab", tabId, "===");
+async function runFill(tabId, options = {}) {
+  const mode = options.mode || "manual";
+  blog("=== BẮT ĐẦU RUN_FILL cho tab", tabId, "mode =", mode, "===");
   const cfg = await chrome.storage.local.get({
     apiToken: "", model: "deepseek-chat", msgCount: "3", catalog: "",
     promoHCM: "", promoOther: "", hcmProvinces: ""
@@ -783,6 +803,11 @@ async function runFill(tabId) {
 
   if (!collected.messages.length && !collected.orderConfirmation) {
     throw new Error("Không đọc được tin nhắn chat nào. Hãy mở màn hình có khung chat.");
+  }
+
+  // Chặn trước khi gọi AI hoặc mở/điền form.
+  if (hasRecentTrackingInbox(collected.messages)) {
+    throw new Error("Một trong 3 inbox gần nhất có 'Theo dõi vận chuyển'; đã hủy thao tác lên đơn.");
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
@@ -915,7 +940,7 @@ async function runFill(tabId) {
   await new Promise((r) => setTimeout(r, 3000));
 
   blog("Bắt đầu điền form...");
-  const fillRes = await fillForm(tabId, extracted);
+  const fillRes = await fillForm(tabId, extracted, { mode });
 
   // Gỡ debugger (nếu đã attach khi click mã KM) để tắt thanh cảnh báo.
   await detachDebugger(tabId);
@@ -1342,32 +1367,28 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
 // Mở/điều hướng tab vpage tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
 async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
-  let tab = await findConversationTab();
+  // Webhook luôn dùng tab riêng, không điều hướng tab người dùng đang mở.
+  const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+  try {
+    await waitTabComplete(tab.id, 20000);
+    await new Promise((r) => setTimeout(r, 4000));
 
-  if (tab) {
-    blog(`AutoFill: điều hướng tab vpage #${tab.id} -> ${targetUrl}`);
-    await chrome.tabs.update(tab.id, { url: targetUrl, active: true });
-  } else {
-    blog(`AutoFill: chưa có tab vpage -> mở mới ${targetUrl}`);
-    tab = await chrome.tabs.create({ url: targetUrl, active: false });
+    const opened = await openFirstConversation(tab.id, phone);
+    if (!opened) throw new Error(`Không tìm thấy box hội thoại nào cho SĐT ${phone}.`);
+    await new Promise((r) => setTimeout(r, 3000));
+
+    blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
+    const res = await runFill(tab.id, { mode: "webhook" });
+    blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 300)}`);
+    return res;
+  } finally {
+    try {
+      await chrome.tabs.remove(tab.id);
+      blog(`AutoFill webhook: đã đóng tab riêng #${tab.id}.`);
+    } catch (e) {
+      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+    }
   }
-
-  await waitTabComplete(tab.id, 20000);
-  // Chờ thêm để Angular + API hội thoại nạp xong (tìm đúng khách theo SĐT).
-  await new Promise((r) => setTimeout(r, 4000));
-
-  // Click box hội thoại đầu tiên (đã lọc theo SĐT) để mở khung chat.
-  const opened = await openFirstConversation(tab.id, phone);
-  if (!opened) {
-    throw new Error(`Không tìm thấy box hội thoại nào cho SĐT ${phone}.`);
-  }
-  // Chờ khung chat nạp tin nhắn.
-  await new Promise((r) => setTimeout(r, 3000));
-
-  blog(`AutoFill: bắt đầu runFill cho tab #${tab.id} (SĐT ${phone}).`);
-  const res = await runFill(tab.id);
-  blog(`AutoFill: runFill xong -> ${JSON.stringify(res).slice(0, 300)}`);
-  return res;
 }
 
 // Poll Worker lấy lệnh lên đơn, xử lý tuần tự, ack sau mỗi lệnh.
