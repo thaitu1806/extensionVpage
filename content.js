@@ -770,6 +770,34 @@ async function fillAddressRegion(region3, region2) {
   const hasDistrictKeyword = parts3.some((p) =>
     /(^|\s)(quận|huyện|thị xã|thị trấn|thành phố)(\s|$)/i.test(p));
 
+  // Các tỉnh/thành dưới đây đã bị gom dữ liệu địa giới trên hệ thống.
+  // Với địa chỉ thuộc các tỉnh này, mặc định ép cấp 3 và không fallback về cấp 2.
+  const groupedProvinceNames = [
+    "Hà Giang", "Yên Bái", "Bắc Kạn", "Hòa Bình", "Vĩnh Phúc",
+    "Bắc Giang", "Thái Bình", "Hải Dương", "Hà Nam", "Nam Định",
+    "Quảng Bình", "Quảng Nam", "Kon Tum", "Bình Định", "Phú Yên",
+    "Ninh Thuận", "Đắk Nông", "Bình Thuận", "Bà Rịa – Vũng Tàu",
+    "Bà Rịa - Vũng Tàu", "Bình Dương", "Bình Phước", "Long An",
+    "Bến Tre", "Trà Vinh", "Sóc Trăng", "Hậu Giang", "Tiền Giang",
+    "Kiên Giang", "Bạc Liêu"
+  ];
+  const normalizeProvince = (value) => String(value || "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[–—]/g, "-")
+    .replace(/^(tinh|thanh pho|tp\\.?)[ \\t]+/i, "")
+    .replace(/\\s+/g, " ")
+    .trim();
+  const groupedProvinceKeys = groupedProvinceNames.map(normalizeProvince);
+  const hasGroupedProvince = parts3.some((part) => {
+    const normalizedPart = normalizeProvince(part);
+    return groupedProvinceKeys.some((province) =>
+      normalizedPart === province || normalizedPart.endsWith(" " + province)
+    );
+  });
+
   // hasDistrict: địa chỉ có CẤP HUYỆN hay không? Dùng để quyết định toggle 2/3 cấp.
   // Đủ 3 cụm (Phường, Quận/TP, Tỉnh) HOẶC có từ khóa cấp huyện => 3 cấp.
   const hasDistrict = parts3.length >= 3 || hasDistrictKeyword;
@@ -780,12 +808,10 @@ async function fillAddressRegion(region3, region2) {
     return /\bphuong\s*\d+\b/.test(noAccent);
   });
 
-  // forceLevel3: ÉP cấp 3 và CHẶN fallback 2 cấp. Chỉ khi:
-  //  - Phường dạng SỐ (dễ nhầm ở quận khác nếu dùng 2 cấp), HOẶC
-  //  - Có từ khóa Quận/Huyện/Thị xã/Thị trấn rõ ràng.
-  // KHÔNG ép khi cấp huyện là "Thành phố" (vd "Thành phố Đà Lạt") vì
-  // nhanh.vn có thể không có gợi ý 3 cấp cho TP trực thuộc tỉnh.
-  const forceLevel3 = hasNumberedWard || hasDistrictKeyword;
+  // forceLevel3: ép cấp 3 với phường dạng số, địa chỉ có cấp huyện rõ ràng,
+  // hoặc tỉnh thuộc danh sách đã bị gom dữ liệu địa giới.
+  // Với các tỉnh bị gom, tuyệt đối không fallback về cấp 2.
+  const forceLevel3 = hasNumberedWard || hasDistrictKeyword || hasGroupedProvince;
 
   const isTwoLevel = forceLevel3 ? false : (parts3.length <= 2 || !hasDistrict);
   const r2 = region2 || region3;
