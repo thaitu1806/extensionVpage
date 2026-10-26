@@ -1326,7 +1326,7 @@ async function runScanCycle() {
     // chưa đọc dù đơn đã được tạo; nếu có "Theo dõi vận chuyển" hoặc link tracking
     // thì không gửi Telegram và tuyệt đối không kích hoạt luồng tạo đơn lần nữa.
     const normalizedOrderText = normalizeTrackingText(orderText);
-    const hasTrackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(orderText);
+    const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(orderText);
     if (normalizedOrderText.includes("theo doi van chuyen") || hasTrackingLink) {
       blog(`Quét: "${conv.name}" - bỏ qua template vì đã có dấu hiệu tracking/đơn đã xử lý; không gửi Telegram, không lên đơn lại.`);
       continue;
