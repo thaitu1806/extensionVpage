@@ -96,6 +96,16 @@ function cleanAddress(addr) {
 //      addressRegion = "Phường Tân Sơn Nhì, Hồ Chí Minh"
 function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
+
+  // Tách cụm phường + quận viết liền ở cuối địa chỉ:
+  // "231/83/12L đường Bá Trạc p1q8" -> "... đường Bá Trạc, Phường 1, Quận 8"
+  // Hỗ trợ số bất kỳ (p1q10, p12q5), có/không có dấu chấm hoặc khoảng trắng.
+  // Chỉ khớp khi cụm hành chính nằm cuối chuỗi hoặc ngay trước dấu phẩy.
+  full = full.replace(
+    /\\s+p\\.?\\s*(\\d+)\\s*q\\.?\\s*(\\d+)(?=\\s*(?:,|$))/i,
+    ", Phường $1, Quận $2"
+  );
+
   const parts = full.split(",").map((s) => s.trim()).filter(Boolean);
   if (parts.length <= 1) return { address: full, addressRegion: "" };
 
