@@ -1155,6 +1155,13 @@ function buildRegionQueries(regionText) {
     return part;
   };
   const parts = (regionText || "").split(",").map((s) => expandAdminAbbreviation(s)).filter(Boolean);
+  // Địa chỉ cũ tại Quận 2 / Quận 9 (TP.HCM) nay tra cứu theo Thành phố Thủ Đức.
+  // Chỉ đổi đúng cụm hành chính độc lập, không thay các phần tên đường/địa chỉ chi tiết.
+  for (let i = 0; i < parts.length; i++) {
+    if (/^quận\\s*[29]$/i.test(parts[i])) {
+      parts[i] = "Thành phố Thủ Đức";
+    }
+  }
   // Nếu thiếu tỉnh/thành nhưng có đủ Phường + Quận/Huyện, thử thêm Hồ Chí Minh
   // vì nhiều địa chỉ khách ở TP.HCM thường được nhập thiếu cấp tỉnh/thành.
   const missingProvince = parts.length === 2
