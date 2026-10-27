@@ -1177,15 +1177,18 @@ function buildRegionQueries(regionText) {
     }
     // Mở rộng viết tắt địa giới chỉ trong các cụm địa chỉ hành chính.
     // Ví dụ: "p4" -> "Phường 4", "p Sài gòn" -> "Phường Sài gòn".
+    // Chỉ mở rộng khi ký hiệu thực sự kết thúc ở dấu chấm, khoảng trắng
+    // hoặc đứng trước số. Không được match đầu từ đầy đủ như "Phường", "Quận",
+    // "Xã", "Huyện" (nếu không sẽ tạo "Phường hường", "Quận uận", ...).
     const rules = [
-      [/^p\.?\s*(?=\S)/i, "Phường "],
-      [/^f\.?\s*(?=\S)/i, "Phường "],
-      [/^x\.?\s*(?=\S)/i, "Xã "],
-      [/^q\.?\s*(?=\S)/i, "Quận "],
-      [/^h\.?\s*(?=\S)/i, "Huyện "],
-      [/^tp\.?\s*(?=\S)/i, "Thành phố "],
-      [/^tx\.?\s*(?=\S)/i, "Thị xã "],
-      [/^tt\.?\s*(?=\S)/i, "Thị trấn "]
+      [/^p(?:\.\s*|\s+|(?=\d))/i, "Phường "],
+      [/^f(?:\.\s*|\s+|(?=\d))/i, "Phường "],
+      [/^x(?:\.\s*|\s+|(?=\d))/i, "Xã "],
+      [/^q(?:\.\s*|\s+|(?=\d))/i, "Quận "],
+      [/^h(?:\.\s*|\s+|(?=\d))/i, "Huyện "],
+      [/^tp(?:\.\s*|\s+|(?=\d))/i, "Thành phố "],
+      [/^tx(?:\.\s*|\s+|(?=\d))/i, "Thị xã "],
+      [/^tt(?:\.\s*|\s+|(?=\d))/i, "Thị trấn "]
     ];
     for (const [pattern, prefix] of rules) {
       if (pattern.test(part)) return part.replace(pattern, prefix).trim();
