@@ -1323,9 +1323,13 @@ async function addProducts(products) {
       break;
     }
 
-    const fullName = p.name || "";
+    const originalName = p.name || "";
+    // Chuẩn hóa tên lấy từ tin nhắn khách về tên biến thể trong catalog.
+    // Ví dụ "Gạo Thường (Không Cay)" -> "Gạo Thường - Không Cay".
+    // Chỉ đổi cách viết biến thể đã biết, không tự bỏ thông tin vị sản phẩm.
+    const fullName = normalizeIncomingProductName(originalName);
     const queries = buildProductQueries(fullName, p.search);
-    log(`addProducts: "${fullName}" (từ khóa="${p.search || "-"}", SL ${p.quantity}), thử query:`, queries);
+    log(`addProducts: gốc="${originalName}", chuẩn hóa="${fullName}" (từ khóa="${p.search || "-"}", SL ${p.quantity}), thử query:`, queries);
 
     let ok = false;
     for (const q of queries) {
@@ -1603,6 +1607,23 @@ function pressEnter(input) {
   input.dispatchEvent(new KeyboardEvent("keydown", opts));
   input.dispatchEvent(new KeyboardEvent("keypress", opts));
   input.dispatchEvent(new KeyboardEvent("keyup", opts));
+}
+
+// Chuẩn hóa tên sản phẩm từ nội dung đơn về cách đặt tên của catalog.
+function normalizeIncomingProductName(name) {
+  let n = String(name || "").trim();
+
+  // Chuyển các biến thể viết trong ngoặc thành hậu tố tên catalog.
+  // Giữ nguyên các từ phân biệt vị; không xóa "(Không Cay)" như quy cách đóng gói.
+  n = n.replace(/\b(Gạo\s+Thường|Gạo\s+Lứt)\s*\(\s*(Không\s+Cay|Siêu\s+Cay|Cay\s+Vừa)\s*\)/gi,
+    (_, base, variant) => `${base} - ${variant}`);
+
+  // Loại bỏ cụm mô tả "Siêu Chà Bông" khi đi trước tên dòng đã xác định
+  // trong catalog, ví dụ "Siêu Chà Bông - Gạo Thường (Không Cay)".
+  n = n.replace(/\bSiêu\s+Chà\s+Bông\s*[-–:]\s*/i, "");
+
+  // Tên catalog dùng "Cơm cháy ..." nhưng dữ liệu đơn có thể chỉ chứa phần lõi.
+  return n.replace(/\s{2,}/g, " ").trim();
 }
 
 // Tạo các chuỗi tìm kiếm sản phẩm theo thứ tự ưu tiên:
