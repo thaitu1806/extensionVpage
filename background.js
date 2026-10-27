@@ -97,6 +97,14 @@ function cleanAddress(addr) {
 function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
 
+  // Chuẩn hóa phường/quận viết tắt có dấu phẩy:
+  // "... P.5, Q.3" hoặc "... P5, Q3" -> "... Phường 5, Quận 3".
+  // Chỉ khớp cụm P + số, Q + số ở cuối địa chỉ hoặc trước dấu phẩy tiếp theo.
+  full = full.replace(
+    /\bp\.?\s*(\d+)\s*,\s*q\.?\s*(\d+)(?=\s*(?:,|$))/i,
+    "Phường $1, Quận $2"
+  );
+
   // Tách cụm phường + quận viết liền ở cuối địa chỉ:
   // "231/83/12L đường Bá Trạc p1q8" -> "... đường Bá Trạc, Phường 1, Quận 8"
   // Hỗ trợ số bất kỳ (p1q10, p12q5), có/không có dấu chấm hoặc khoảng trắng.
