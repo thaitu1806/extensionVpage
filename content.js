@@ -412,13 +412,22 @@ async function fillForm(data) {
   }
 
   // Địa chỉ chi tiết (số nhà/đường) - ô app-location-autocomplete, là text thường.
+  // Nếu địa chỉ đang có khác với địa chỉ lấy từ tin nhắn thì cập nhật lại;
+  // chỉ bỏ qua khi hai giá trị sau trim giống nhau.
   if (data.address) {
     const el = findAddressDetailInput();
     log("Tìm ô 'Địa chỉ chi tiết':", el ? "OK" : "KHÔNG THẤY");
-    if (el && hasValue(el)) {
-      log("-> ô 'Địa chỉ chi tiết' đã có giá trị, BỎ QUA.");
-    } else if (el) {
-      setNativeValue(el, data.address); fireFocusBlur(el); done.push("địa chỉ");
+    if (el) {
+      const currentAddress = (el.value || "").trim();
+      const incomingAddress = String(data.address).trim();
+      if (currentAddress === incomingAddress) {
+        log("-> ô 'Địa chỉ chi tiết' đã đúng giá trị, BỎ QUA.");
+      } else {
+        log(`-> địa chỉ chi tiết thay đổi: hiện tại="${currentAddress}", mới="${incomingAddress}" -> cập nhật.`);
+        setNativeValue(el, incomingAddress);
+        fireFocusBlur(el);
+        done.push("địa chỉ");
+      }
     }
   }
   if (data.note) {
