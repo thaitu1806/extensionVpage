@@ -89,7 +89,9 @@
       <option value="unread">Chỉ quét tin nhắn chưa đọc (hiện tại)</option>
       <option value="recent5">Quét 5 box gần nhất (gồm cả đã đọc)</option>
     </select>
-    <div class="hint">Chế độ 5 box gần nhất kiểm tra 5 hội thoại trên cùng danh sách Vpage mỗi lượt, không phụ thuộc trạng thái đã đọc. Theo dõi log Telegram để xác nhận phù hợp.</div>
+    <label for="scanRecentCount">Số box gần nhất cần quét</label>
+    <input type="number" id="scanRecentCount" min="1" max="50" step="1" value="5" />
+    <div class="hint">Chỉ áp dụng cho chế độ quét box gần nhất (gồm cả đã đọc). Nhập từ 1 đến 50 box.</div>
 
     <label for="scanIntervalMinutes">Chu kỳ tự động quét (phút)</label>
     <input type="number" id="scanIntervalMinutes" min="1" max="1440" step="1" value="3" />
