@@ -14,7 +14,17 @@ function normalizeTrackingText(value = "") {
 }
 function hasRecentTrackingInbox(messages) {
   return (Array.isArray(messages) ? messages : []).slice(-3)
-    .some((message) => normalizeTrackingText(message).includes("theo doi van chuyen"));
+    .some((message) => normalizeTrackingText(typeof message === "string" ? message : (message?.text || "")).includes("theo doi van chuyen"));
+}
+
+// Dừng hoàn toàn thông báo Telegram và tự lên đơn nếu 3 tin cuối đã là tin hậu xử lý/CSKH.
+// Danh sách tin được trả theo thứ tự cũ -> mới, nên slice(-3) là 3 tin mới nhất từ dưới lên.
+function hasRecentStopPhrase(messages) {
+  const stopPhrases = ["theo doi van chuyen", "thong bao tu bep", "tran trong"];
+  return (Array.isArray(messages) ? messages : []).slice(-3).some((message) => {
+    const text = normalizeTrackingText(typeof message === "string" ? message : (message?.text || ""));
+    return stopPhrases.some((phrase) => text.includes(phrase));
+  });
 }
 
 /* ============== PARSE KHỐI XÁC NHẬN ĐƠN ============== */
@@ -846,8 +856,8 @@ async function runFill(tabId, options = {}) {
   }
 
   // Chặn trước khi gọi AI hoặc mở/điền form.
-  if (hasRecentTrackingInbox(collected.messages)) {
-    throw new Error("Một trong 3 inbox gần nhất có 'Theo dõi vận chuyển'; đã hủy thao tác lên đơn.");
+  if (hasRecentStopPhrase(collected.messages)) {
+    throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
@@ -1318,14 +1328,20 @@ async function runScanCycle() {
     // 2) Chờ khung chat nạp tin nhắn (~2.5s).
     await new Promise((r) => setTimeout(r, 2500));
 
-    // 3) Lấy khối đơn trong N tin GẦN NHẤT bên SHOP.
+    // 3) Kiểm tra 3 tin mới nhất trước mọi luồng Telegram/tự lên đơn.
+    // Nếu gặp tracking hoặc tin hệ thống/CSKH của Bếp thì bỏ qua hội thoại này ngay.
+    const recentMessages = await getRecentConversationMessages(tab.id, lastN);
+    if (hasRecentStopPhrase(recentMessages)) {
+      blog(`Quét: "${conv.name}" - 3 tin mới nhất có "Theo dõi vận chuyển", "Thông báo từ Bếp" hoặc "Trân trọng"; dừng, không gửi Telegram và không tự lên đơn.`);
+      continue;
+    }
+
+    // 4) Lấy khối đơn trong N tin GẦN NHẤT bên SHOP.
     const orderText = await getShopOrderText(tab.id, lastN);
     if (!orderText) {
       // Nếu 3 tin gần nhất chưa có template chốt đơn và cũng chưa có tracking,
       // vẫn báo Telegram khi khách đã gửi SĐT + địa chỉ để không bỏ sót lead.
-      const recentMessages = await getRecentConversationMessages(tab.id, lastN);
-      const hasTracking = recentMessages.some((m) => normalizeTrackingText(m.text).includes("theo doi van chuyen"));
-      const contact = !hasTracking ? findCustomerContactMessage(recentMessages) : null;
+      const contact = findCustomerContactMessage(recentMessages);
       if (!contact) {
         blog(`Quét: "${conv.name}" - chưa có template chốt đơn hoặc tin khách đủ SĐT + địa chỉ (hoặc đã có tracking).`);
         continue;
