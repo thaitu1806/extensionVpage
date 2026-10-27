@@ -90,6 +90,12 @@
       <option value="recent5">Quét các box gần nhất, kể cả đã đọc</option>
     </select>
     <div class="hint">Tùy chọn này quyết định quét hội thoại nào. Bật tự động quét ở ô phía trên để extension chạy theo chu kỳ.</div>
+    <label for="scanStrategy">Cách xác định box cần quét</label>
+    <select id="scanStrategy">
+      <option value="fixed">Theo số lượng box như hiện tại (dự phòng)</option>
+      <option value="incremental">Chỉ box có hoạt động mới kể từ lần quét trước</option>
+    </select>
+    <div class="hint">Cách mới dùng thời gian hoạt động của box và khoảng đệm 2 phút để hạn chế sót. Nếu có vấn đề, chuyển về cách hiện tại.</div>
     <label for="scanRecentCount">Số box gần nhất cần quét</label>
     <input type="number" id="scanRecentCount" min="1" max="50" step="1" value="5" />
     <div class="hint">Chỉ áp dụng khi chọn “Quét các box gần nhất, kể cả đã đọc”. Nhập từ 1 đến 50 box.</div>
