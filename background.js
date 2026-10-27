@@ -1290,7 +1290,7 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
-    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread", scanStrategy: "fixed",
+    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread", scanStrategy: "fixed", scanBaselineAt: 0,
     autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
@@ -1316,13 +1316,13 @@ async function runScanCycle() {
   let checkpointAt = 0;
   if (incremental) {
     const checkpoint = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
-    checkpointAt = Number(checkpoint.scanActivityCheckpoint) || 0;
+    checkpointAt = Number(checkpoint.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
     if (checkpointAt > 0) {
       const overlapMs = 2 * 60 * 1000;
       conversations = conversations.filter((conv) => conv.activityAt > 0 && conv.activityAt >= checkpointAt - overlapMs);
       blog(`Incremental scan: mốc=${new Date(checkpointAt).toLocaleString("vi-VN")}, cửa sổ đệm 2 phút, còn ${conversations.length} box cần kiểm tra.`);
     } else {
-      blog("Incremental scan: lần chạy đầu, lấy các box đang hiển thị để tạo mốc ban đầu.");
+      blog("Incremental scan: chưa có mốc đã quét; dùng thời điểm lưu cấu hình làm mốc ban đầu.");
     }
   }
   blog(scanMode === "recent5"
