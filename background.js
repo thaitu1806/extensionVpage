@@ -1131,13 +1131,18 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
             || it.querySelector(".name")?.innerText
             || it.querySelector("b")?.innerText || "").trim();
           const a = it.querySelector("a[href]");
+          const timeTitle = it.querySelector(".conv-time[title]")?.getAttribute("title") || "";
+          const timeMatch = timeTitle.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+          const activityAt = timeMatch
+            ? new Date(Number(timeMatch[3]), Number(timeMatch[2]) - 1, Number(timeMatch[1]), Number(timeMatch[4]), Number(timeMatch[5]), Number(timeMatch[6])).getTime()
+            : 0;
           const id = it.getAttribute("data-id")
             || it.getAttribute("data-conversation-id")
             || it.getAttribute("data-cid")
             || it.id
             || (a && a.getAttribute("href"))
             || (name ? `name:${name}` : `idx:${idx}`);
-          out.push({ id, name });
+          out.push({ id, name, activityAt });
         });
         return { list: out, total: items.length };
       },
@@ -1285,7 +1290,7 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
-    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread",
+    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread", scanStrategy: "fixed",
     autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
@@ -1306,7 +1311,20 @@ async function runScanCycle() {
   // Chọn danh sách theo cấu hình: chỉ chưa đọc (mặc định) hoặc 5 box gần nhất.
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
   const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
-  const conversations = await listConversations(tab.id, scanMode, recentCount);
+  let conversations = await listConversations(tab.id, scanMode, recentCount);
+  const incremental = cfg.scanStrategy === "incremental" && scanMode === "recent5";
+  let checkpointAt = 0;
+  if (incremental) {
+    const checkpoint = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
+    checkpointAt = Number(checkpoint.scanActivityCheckpoint) || 0;
+    if (checkpointAt > 0) {
+      const overlapMs = 2 * 60 * 1000;
+      conversations = conversations.filter((conv) => conv.activityAt > 0 && conv.activityAt >= checkpointAt - overlapMs);
+      blog(`Incremental scan: mốc=${new Date(checkpointAt).toLocaleString("vi-VN")}, cửa sổ đệm 2 phút, còn ${conversations.length} box cần kiểm tra.`);
+    } else {
+      blog("Incremental scan: lần chạy đầu, lấy các box đang hiển thị để tạo mốc ban đầu.");
+    }
+  }
   blog(scanMode === "recent5"
     ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
     : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
@@ -1445,7 +1463,12 @@ async function runScanCycle() {
     // Nhịp nhẹ giữa các hội thoại.
     await new Promise((r) => setTimeout(r, 400));
   }
-  await chrome.storage.local.set({ tgNotified: notified });
+  const saveState = { tgNotified: notified };
+  if (incremental) {
+    const maxActivityAt = Math.max(0, ...conversations.map((conv) => Number(conv.activityAt) || 0));
+    if (maxActivityAt > 0) saveState.scanActivityCheckpoint = Math.max(checkpointAt, maxActivityAt);
+  }
+  await chrome.storage.local.set(saveState);
   blog(`Quét xong: duyệt ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}), gửi ${sent} đơn mới.`);
 }
 
