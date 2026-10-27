@@ -1231,6 +1231,13 @@ function districtNumberOf(s) {
 }
 
 function pickBestRegion(items, regionText) {
+  // Quy tắc ưu tiên: nếu tìm kiếm chỉ trả về ĐÚNG 1 gợi ý, chọn thẳng gợi ý đó.
+  // Nhiều phường là duy nhất; không bắt buộc phải map thêm tỉnh/quận trong trường hợp này.
+  if (Array.isArray(items) && items.length === 1) {
+    log(`pickBestRegion: chỉ có 1 gợi ý -> chọn trực tiếp "${textOf(items[0])}", bỏ qua mapping.`);
+    return items[0];
+  }
+
   const parts = regionText.split(",").map((s) => s.trim()).filter(Boolean);
   const missingProvince = parts.length === 2
     && /^(quận|huyện|thị xã|thị trấn|thành phố)\s+/i.test(parts[1]);
