@@ -1141,6 +1141,7 @@ function buildRegionQueries(regionText) {
     // Ví dụ: "p4" -> "Phường 4", "p Sài gòn" -> "Phường Sài gòn".
     const rules = [
       [/^p\.?\s*(?=\S)/i, "Phường "],
+      [/^f\.?\s*(?=\S)/i, "Phường "],
       [/^x\.?\s*(?=\S)/i, "Xã "],
       [/^q\.?\s*(?=\S)/i, "Quận "],
       [/^h\.?\s*(?=\S)/i, "Huyện "],
