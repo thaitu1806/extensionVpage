@@ -1131,7 +1131,25 @@ function buildRegionQueries(regionText) {
   const stripType = (s) => (s || "")
     .replace(/^(phường|xã|thị trấn|thị xã|quận|huyện|thành phố|tỉnh|tp\.?)\s*/i, "")
     .trim();
-  const parts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const expandAdminAbbreviation = (value) => {
+    let part = (value || "").trim();
+    // Mở rộng viết tắt địa giới chỉ trong các cụm địa chỉ hành chính.
+    // Ví dụ: "p4" -> "Phường 4", "p Sài gòn" -> "Phường Sài gòn".
+    const rules = [
+      [/^p\.?\s*(?=\S)/i, "Phường "],
+      [/^x\.?\s*(?=\S)/i, "Xã "],
+      [/^q\.?\s*(?=\S)/i, "Quận "],
+      [/^h\.?\s*(?=\S)/i, "Huyện "],
+      [/^tp\.?\s*(?=\S)/i, "Thành phố "],
+      [/^tx\.?\s*(?=\S)/i, "Thị xã "],
+      [/^tt\.?\s*(?=\S)/i, "Thị trấn "]
+    ];
+    for (const [pattern, prefix] of rules) {
+      if (pattern.test(part)) return part.replace(pattern, prefix).trim();
+    }
+    return part;
+  };
+  const parts = (regionText || "").split(",").map((s) => expandAdminAbbreviation(s)).filter(Boolean);
   // Nếu thiếu tỉnh/thành nhưng có đủ Phường + Quận/Huyện, thử thêm Hồ Chí Minh
   // vì nhiều địa chỉ khách ở TP.HCM thường được nhập thiếu cấp tỉnh/thành.
   const missingProvince = parts.length === 2
