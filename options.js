@@ -83,6 +83,7 @@ function save() {
     tgEnabled: $("tgEnabled").checked,
     scanMode: $("scanMode").value === "recent5" ? "recent5" : "unread",
     scanStrategy: $("scanStrategy").value === "incremental" ? "incremental" : "fixed",
+    scanBaselineAt: $("scanStrategy").value === "incremental" ? Date.now() : 0,
     scanRecentCount: Math.max(1, Math.min(50, parseInt($("scanRecentCount").value, 10) || 5)),
     scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
