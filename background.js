@@ -69,15 +69,18 @@ function normalizeMoneyFields(obj) {
 // có dấu hiệu thuộc TP.HCM/TP Thủ Đức để tránh xóa nhầm địa danh ở nơi khác.
 function removeObsoleteHcmDistricts(region) {
   if (!region) return "";
-  const isHcm = /hồ\s*chí\s*minh|ho\s*chi\s*minh|\bhcm\b|sài\s*gòn|sai\s*gon|thủ\s*đức|thu\s*duc/i.test(region);
+  const isHcm = /hồ\\s*chí\\s*minh|ho\\s*chi\\s*minh|\\bhcm\\b|sài\\s*gòn|sai\\s*gon|thủ\\s*đức|thu\\s*duc/i.test(region);
   if (!isHcm) return region;
-  const obsoleteDistrict = /^(?:quận\s*[29]|q\.?\s*[29])$/i;
-  return region.split(",")
-    .map((part) => part.trim())
-    .filter((part) => part && !obsoleteDistrict.test(part))
-    .join(", ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+
+  const parts = region.split(",").map((part) => part.trim()).filter(Boolean);
+  const obsoleteDistrict = /^(?:quận\\s*[29]|q\\.?\\s*[29])$/i;
+  const cleaned = parts
+    .filter((part) => !obsoleteDistrict.test(part))
+    // "TP Thủ Đức" là cấp trung gian không cần gửi nguyên cụm khi tìm địa giới.
+    // Giữ tên "Thủ Đức" để có thể dùng làm cấp giữa nếu hệ thống cần.
+    .map((part) => /^(?:tp\\.?\\s*)?thủ\\s*đức$/i.test(part) ? "Thủ Đức" : part);
+
+  return cleaned.join(", ").replace(/\\s{2,}/g, " ").trim();
 }
 function cleanAddress(addr) {
   return addr
