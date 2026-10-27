@@ -1311,8 +1311,8 @@ async function runScanCycle() {
   // Chọn danh sách theo cấu hình: chỉ chưa đọc (mặc định) hoặc 5 box gần nhất.
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
   const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
-  let conversations = await listConversations(tab.id, scanMode, recentCount);
   const incremental = cfg.scanStrategy === "incremental" && scanMode === "recent5";
+  let conversations = await listConversations(tab.id, scanMode, incremental ? 50 : recentCount);
   let checkpointAt = 0;
   if (incremental) {
     const checkpoint = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
@@ -1326,7 +1326,7 @@ async function runScanCycle() {
     }
   }
   blog(scanMode === "recent5"
-    ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
+    ? `Quét: ${conversations.length} box ${incremental ? "theo mốc hoạt động mới" : "gần nhất"} (bao gồm đã đọc/chưa đọc).`
     : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
   if (!conversations.length) return;
 
