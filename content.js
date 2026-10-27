@@ -26,6 +26,44 @@ function log(...args) {
 
 log("content script đã nạp.");
 
+/* ============== TỰ TIẾP TỤC BUSINESS AGENT ============== */
+// Khi mở box chat, nếu Vpage hiển thị nút "Tiếp tục" của BizAI/Business Agent,
+// tự click một lần để Agent tiếp tục trả lời. Theo dõi DOM vì nút có thể xuất hiện
+// trễ sau khi hội thoại được tải.
+let _bizAiContinueButton = null;
+function clickBizAiContinueIfPresent() {
+  const buttons = Array.from(document.querySelectorAll(".btn-bizai-continue"))
+    .filter((el) => {
+      const text = textOf(el);
+      return el.isConnected
+        && el.getClientRects().length > 0
+        && /tiếp tục/i.test(text);
+    });
+
+  const button = buttons[0] || null;
+  if (!button) {
+    _bizAiContinueButton = null;
+    return;
+  }
+  // Không click liên tục khi Angular chưa kịp ẩn/cập nhật nút sau lần click.
+  if (_bizAiContinueButton === button) return;
+
+  _bizAiContinueButton = button;
+  log('BizAI: phát hiện nút "Tiếp tục", tự click để Agent tiếp tục trả lời.');
+  button.click();
+}
+
+const _bizAiContinueObserver = new MutationObserver(() => clickBizAiContinueIfPresent());
+_bizAiContinueObserver.observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+  characterData: true,
+  attributes: true
+});
+// Kiểm tra định kỳ để nhận biết trường hợp nút được tái sử dụng khi chuyển box.
+setInterval(clickBizAiContinueIfPresent, 800);
+clickBizAiContinueIfPresent();
+
 /* ============== NẠP SCRIPT VÀO MAIN WORLD (để thao tác AutoNumeric) ============== */
 
 let injectReady = false;
