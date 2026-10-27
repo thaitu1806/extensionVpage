@@ -1133,6 +1133,10 @@ function buildRegionQueries(regionText) {
     .trim();
   const expandAdminAbbreviation = (value) => {
     let part = (value || "").trim();
+    // Chuẩn hóa bí danh TP.HCM trực tiếp về tên chuẩn mà Vpage sử dụng.
+    if (/^tp\.?\s*(?:hcm|tphcm|hồ chí minh|ho chi minh|sài gòn|sai gon)$/i.test(part)) {
+      return "Hồ Chí Minh";
+    }
     // Mở rộng viết tắt địa giới chỉ trong các cụm địa chỉ hành chính.
     // Ví dụ: "p4" -> "Phường 4", "p Sài gòn" -> "Phường Sài gòn".
     const rules = [
