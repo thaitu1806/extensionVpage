@@ -1110,7 +1110,7 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: function (mode, count) {
-        const selector = mode === "recent5" ? ".item" : ".item.unread";
+        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
         const limit = Math.max(1, Math.min(50, Number.parseInt(count, 10) || 5));
         const items = Array.from(document.querySelectorAll(selector))
           .filter((el) => el.offsetParent !== null)
@@ -1148,7 +1148,7 @@ async function openConversationById(tabId, convId, scanMode = "unread") {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: function (wantId, mode) {
-        const selector = mode === "recent5" ? ".item" : ".item.unread";
+        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
         const items = Array.from(document.querySelectorAll(selector))
           .filter((el) => el.offsetParent !== null);
         const idOf = (it, idx) => {
@@ -1430,7 +1430,7 @@ async function runScanCycle() {
     await new Promise((r) => setTimeout(r, 400));
   }
   await chrome.storage.local.set({ tgNotified: notified });
-  blog(`Quét xong: duyệt ${scanned}/${conversations.length} box (${scanMode === "recent5" ? "5 box gần nhất" : "chưa đọc"}), gửi ${sent} đơn mới.`);
+  blog(`Quét xong: duyệt ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}), gửi ${sent} đơn mới.`);
 }
 
 function escapeHtml(s) {
