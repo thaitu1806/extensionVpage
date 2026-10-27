@@ -102,7 +102,7 @@ function splitAddress(full) {
   // Hỗ trợ số bất kỳ (p1q10, p12q5), có/không có dấu chấm hoặc khoảng trắng.
   // Chỉ khớp khi cụm hành chính nằm cuối chuỗi hoặc ngay trước dấu phẩy.
   full = full.replace(
-    /\\s+p\\.?\\s*(\\d+)\\s*q\\.?\\s*(\\d+)(?=\\s*(?:,|$))/i,
+    /\s+p\.?\s*(\d+)\s*q\.?\s*(\d+)(?=\s*(?:,|$))/i,
     ", Phường $1, Quận $2"
   );
 
