@@ -29,6 +29,7 @@ const DEFAULTS = {
   hcmProvinces: "Bình Dương, Bà Rịa - Vũng Tàu, Đồng Nai, Long An, Tây Ninh, Bình Phước",
   tgEnabled: false,
   scanMode: "unread",
+  scanRecentCount: 5,
   scanIntervalMinutes: 3,
   tgToken: "",
   tgChatId: "",
@@ -53,6 +54,7 @@ function load() {
     $("hcmProvinces").value = cfg.hcmProvinces || "";
     $("tgEnabled").checked = !!cfg.tgEnabled;
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
+    $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
     $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
     $("tgChatId").value = cfg.tgChatId || "";
@@ -78,6 +80,7 @@ function save() {
     hcmProvinces: $("hcmProvinces").value.trim(),
     tgEnabled: $("tgEnabled").checked,
     scanMode: $("scanMode").value === "recent5" ? "recent5" : "unread",
+    scanRecentCount: Math.max(1, Math.min(50, parseInt($("scanRecentCount").value, 10) || 5)),
     scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
     tgChatId: $("tgChatId").value.trim(),
