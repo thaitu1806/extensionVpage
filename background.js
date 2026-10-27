@@ -1105,15 +1105,16 @@ async function findConversationTab() {
 }
 
 // Liệt kê hội thoại theo chế độ: "unread" = chưa đọc; "recent5" = 5 box gần nhất bất kể trạng thái đọc.
-async function listConversations(tabId, scanMode = "unread") {
+async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
-      func: function (mode) {
+      func: function (mode, count) {
         const selector = mode === "recent5" ? ".item" : ".item.unread";
+        const limit = Math.max(1, Math.min(50, Number.parseInt(count, 10) || 5));
         const items = Array.from(document.querySelectorAll(selector))
           .filter((el) => el.offsetParent !== null)
-          .slice(0, 5);
+          .slice(0, mode === "recent5" ? limit : 5);
         const out = [];
         items.forEach((it, idx) => {
           const name = (it.querySelector("b.name")?.innerText
@@ -1130,10 +1131,10 @@ async function listConversations(tabId, scanMode = "unread") {
         });
         return { list: out, total: items.length };
       },
-      args: [scanMode]
+      args: [scanMode, recentCount]
     });
     const r = (results && results[0] && results[0].result) || { list: [] };
-    blog(`listConversations: chế độ ${scanMode}, lấy ${r.total} box gần nhất (tối đa 5).`);
+    blog(`listConversations: chế độ ${scanMode}, lấy ${r.total} box gần nhất (tối đa ${scanMode === "recent5" ? Math.max(1, Math.min(50, parseInt(recentCount, 10) || 5)) : 5}).`);
     return r.list || [];
   } catch (e) {
     blog("listConversations lỗi:", e.message);
@@ -1294,7 +1295,8 @@ async function runScanCycle() {
 
   // Chọn danh sách theo cấu hình: chỉ chưa đọc (mặc định) hoặc 5 box gần nhất.
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
-  const conversations = await listConversations(tab.id, scanMode);
+  const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
+  const conversations = await listConversations(tab.id, scanMode, recentCount);
   blog(scanMode === "recent5"
     ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
     : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
