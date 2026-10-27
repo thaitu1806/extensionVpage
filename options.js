@@ -29,6 +29,7 @@ const DEFAULTS = {
   hcmProvinces: "Bình Dương, Bà Rịa - Vũng Tàu, Đồng Nai, Long An, Tây Ninh, Bình Phước",
   tgEnabled: false,
   scanMode: "unread",
+  scanStrategy: "fixed",
   scanRecentCount: 5,
   scanIntervalMinutes: 3,
   tgToken: "",
@@ -54,6 +55,7 @@ function load() {
     $("hcmProvinces").value = cfg.hcmProvinces || "";
     $("tgEnabled").checked = !!cfg.tgEnabled;
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
+    $("scanStrategy").value = cfg.scanStrategy === "incremental" ? "incremental" : "fixed";
     $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
     $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
@@ -80,6 +82,7 @@ function save() {
     hcmProvinces: $("hcmProvinces").value.trim(),
     tgEnabled: $("tgEnabled").checked,
     scanMode: $("scanMode").value === "recent5" ? "recent5" : "unread",
+    scanStrategy: $("scanStrategy").value === "incremental" ? "incremental" : "fixed",
     scanRecentCount: Math.max(1, Math.min(50, parseInt($("scanRecentCount").value, 10) || 5)),
     scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
