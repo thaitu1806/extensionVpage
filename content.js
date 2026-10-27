@@ -453,7 +453,10 @@ async function fillForm(data) {
     if (okPromo) done.push("mã KM");
   }
 
-  // 2) Chiết khấu = tổng tiền hàng - COD - phí ship.
+  // 2) Đơn vị chiết khấu phải là $ trước khi nhập số tiền chiết khấu.
+  ensureDiscountUnitCash();
+
+  // 3) Chiết khấu = tổng tiền hàng - COD - phí ship.
   const discount = computeDiscount(data);
   {
     const productsTotal = (data.products || []).reduce(
@@ -556,6 +559,45 @@ function findDiscountInput() {
   const el = document.querySelector("app-payment-crm-component input[placeholder='Chiết khấu']");
   if (el) return el;
   return findByPlaceholder("Chiết khấu");
+}
+
+// Đơn vị chiết khấu luôn dùng tiền mặt ($), không dùng phần trăm (%).
+// Chỉ tác động dropdown có đúng hai option cash/percent trong khu vực thanh toán.
+function ensureDiscountUnitCash() {
+  const discountInput = findDiscountInput();
+  const paymentComponent = discountInput?.closest("app-payment-crm-component")
+    || document.querySelector("app-payment-crm-component");
+  const candidates = Array.from(
+    (paymentComponent || document).querySelectorAll("select")
+  );
+  const unitSelect = candidates.find((select) => {
+    const values = Array.from(select.options || []).map((option) => option.value);
+    return values.includes("cash") && values.includes("percent");
+  });
+
+  if (!unitSelect) {
+    log("Không tìm thấy dropdown đơn vị chiết khấu ($/%).");
+    return false;
+  }
+
+  if (unitSelect.value === "cash") {
+    log("Đơn vị chiết khấu đã là $, giữ nguyên.");
+    return true;
+  }
+
+  const cashOption = Array.from(unitSelect.options || []).find((option) => option.value === "cash");
+  if (!cashOption) {
+    log("Dropdown đơn vị chiết khấu không có option cash.");
+    return false;
+  }
+
+  const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
+  if (setter) setter.call(unitSelect, "cash");
+  else unitSelect.value = "cash";
+  unitSelect.dispatchEvent(new Event("input", { bubbles: true }));
+  unitSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  log("Đã đổi đơn vị chiết khấu từ % sang $.");
+  return unitSelect.value === "cash";
 }
 
 // Chọn mã khuyến mại HVC khớp với tên (hoặc một phần tên) cấu hình.
