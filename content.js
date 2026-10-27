@@ -1469,6 +1469,10 @@ async function waitRowAdded(baseline, timeout = 2500) {
 async function chooseSuggestion(input, targetName, rowsBefore) {
   // Cách 1: click phần tử con của gợi ý khớp nhất.
   const best = bestSuggestionEl(targetName);
+  if (best && !suggestionMatchesVariant(targetName, suggestionName(best))) {
+    log(`chooseSuggestion: từ chối gợi ý lệch vị "${suggestionName(best)}" cho "${targetName}"`);
+    return false;
+  }
   if (best) {
     log(`chooseSuggestion[click]: "${suggestionName(best)}"`);
     const clickTargets = [
@@ -1495,7 +1499,8 @@ async function chooseSuggestion(input, targetName, rowsBefore) {
   // Cách 3: click thẳng mục KHỚP NHẤT nếu chỉ còn 1 gợi ý VÀ không lệch loại.
   const items = getSuggestionItems();
   if (items.length === 1) {
-    if (suggestionMatchesType(targetName, suggestionName(items[0]))) {
+    if (suggestionMatchesType(targetName, suggestionName(items[0]))
+        && suggestionMatchesVariant(targetName, suggestionName(items[0]))) {
       log("chooseSuggestion[single]: click mục duy nhất (cùng loại).");
       simulateClick(items[0]);
       if (await waitRowAdded(rowsBefore, 1800)) return true;
@@ -1505,6 +1510,25 @@ async function chooseSuggestion(input, targetName, rowsBefore) {
   }
 
   return false;
+}
+
+// So khớp biến thể vị cay. Đây là thuộc tính bắt buộc, không được coi
+// "Không Cay", "Cay Vừa" và "Siêu Cay" là các tên gần tương đương.
+function spiceVariant(name) {
+  const n = normalize(name);
+  if (/\bkhong cay\b/.test(n)) return "khong-cay";
+  if (/\bsieu cay\b/.test(n)) return "sieu-cay";
+  if (/\bcay vua\b/.test(n)) return "cay-vua";
+  if (/\bit cay\b/.test(n)) return "it-cay";
+  // Chỉ phân loại "cay" chung khi không có biến thể cụ thể ở trên.
+  if (/\bcay\b/.test(n)) return "cay";
+  return "";
+}
+
+function suggestionMatchesVariant(targetName, suggestionText) {
+  const targetVariant = spiceVariant(targetName);
+  if (!targetVariant) return true;
+  return spiceVariant(suggestionText) === targetVariant;
 }
 
 // Kiểm tra mục gợi ý có CÙNG LOẠI (marker kích cỡ "đại"/"siêu đại") với tên
@@ -1592,39 +1616,39 @@ function buildProductQueries(name, searchKeyword) {
   const queries = [];
   const push = (q) => { if (q && !queries.includes(q)) queries.push(q); };
 
-  // 0) TỪ KHÓA CATALOG (nếu có) - ưu tiên nhất.
-  if (searchKeyword && searchKeyword.trim()) push(searchKeyword.trim());
+  const n = (name || "").trim();
 
-  let n = (name || "").trim();
-
-  // GHI CHÚ TRONG NGOẶC "(250g)" là quy cách, KHÔNG nằm trong tên hệ thống
-  // nhanh.vn -> phải BỎ trước. Nhưng trọng lượng DẠNG RỜI "500gr" (vd
-  // "Thường Siêu Đại 500gr") LÀ phần tên thật -> GIỮ.
-  const noParen = n.replace(/\([^)]*\)/g, " ").replace(/\s{2,}/g, " ").trim();
-
-  // 1) Tên đã bỏ ngoặc, GIỮ "500gr" rời (ưu tiên nhất).
-  push(noParen);
-  // 2) Bỏ tiền tố "Cơm cháy" (vẫn giữ 500gr rời).
-  push(noParen.replace(/^c[ơo]m\s*ch[áa]y\s*/i, "").trim());
-
-  // 3) DỰ PHÒNG rút gọn hẳn: bỏ cả trọng lượng rời (phòng khi tên hệ thống
-  //    không kèm trọng lượng, hoặc gõ ngắn vẫn ra).
-  const core = noParen
-    .replace(/\b\d+\s*(g|gr|gram|kg)\b/gi, " ")  // bỏ "500gr", "250g" rời
+  // CHỈ bỏ ngoặc dùng cho quy cách/khối lượng như "(250g)".
+  // Không được xóa mọi nội dung trong ngoặc: "(Không Cay)" là thuộc tính
+  // sản phẩm quan trọng, nếu bỏ sẽ dễ chọn nhầm "Siêu Cay".
+  const noPackageParen = n
+    .replace(/\(\s*\d+\s*(?:g|gr|gram|kg)\s*\)/gi, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
-  push(core.replace(/^c[ơo]m\s*ch[áa]y\s*/i, "").trim());
-  push(core);
 
-  // 4) Biến thể bỏ dấu gạch '-' (một số ô tìm không khớp dấu '-').
-  const extra = [];
-  for (const q of queries) {
-    const dashless = q.replace(/[-–]/g, " ").replace(/\s{2,}/g, " ").trim();
-    if (dashless && !queries.includes(dashless) && !extra.includes(dashless)) {
-      extra.push(dashless);
-    }
-  }
-  return [...queries, ...extra].filter((q) => q && q.length >= 2);
+  // Ưu tiên tên đầy đủ có giữ biến thể/vị; từ khóa catalog chỉ là dự phòng
+  // vì có thể là từ khóa chung không phân biệt vị.
+  push(noPackageParen);
+  push(noPackageParen.replace(/^c[ơo]m\s*ch[áa]y\s*/i, "").trim());
+
+  // Biến thể bỏ dấu gạch nhưng vẫn giữ nguyên các từ phân biệt vị.
+  const dashlessQueries = queries.map((q) =>
+    q.replace(/[-–]/g, " ").replace(/\s{2,}/g, " ").trim()
+  );
+  dashlessQueries.forEach(push);
+
+  // Dự phòng bỏ khối lượng rời; KHÔNG loại bỏ "Không Cay/Siêu Cay/Cay Vừa".
+  const core = noPackageParen
+    .replace(/\b\d+\s*(g|gr|gram|kg)\b/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  push(core);
+  push(core.replace(/^c[ơo]m\s*ch[áa]y\s*/i, "").trim());
+
+  // Từ khóa catalog đặt sau các truy vấn giữ đủ tên và biến thể.
+  if (searchKeyword && searchKeyword.trim()) push(searchKeyword.trim());
+
+  return queries.filter((q) => q && q.length >= 2);
 }
 
 // Gõ một chuỗi vào ô tìm và chờ danh sách gợi ý xuất hiện.
