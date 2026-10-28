@@ -55,7 +55,7 @@ async function handleTelegram(request, env) {
  if (cq) {
   const chatId = cq.message && cq.message.chat && cq.message.chat.id;
   if (!chatIdAllowed(env, chatId)) { await answerCallback(env, cq.id, "Không có quyền."); return json({ ok: true }); }
-  const match = String(cq.data || "").match(/^fill:(\\d{6,15})$/);
+  const match = String(cq.data || "").match(/^fill:(\d{6,15})$/);
   if (!match) { await answerCallback(env, cq.id, "Lệnh không hợp lệ."); return json({ ok: true }); }
   const command = { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: "fill", phone: match[1], chatId, ts: Date.now() };
   await env.ORDERS_QUEUE.send(command);
@@ -69,7 +69,7 @@ async function handleTelegram(request, env) {
  if (!text.startsWith("/")) return json({ ok: true });
  if (!chatIdAllowed(env, chatId)) { await sendTelegram(env, chatId, "⛔ Chat này chưa được cấp quyền điều khiển."); return json({ ok: true }); }
 
- const commandName = text.split(/\\s+/)[0].split("@")[0].toLowerCase();
+ const commandName = text.split(/\s+/)[0].split("@")[0].toLowerCase();
  const actions = {
   "/auto_on": ["set", { autoOrderOnNotify: true }, "✅ Đã yêu cầu bật tự động lên đơn khi gửi thông báo."],
   "/auto_off": ["set", { autoOrderOnNotify: false }, "🛑 Đã yêu cầu tắt tự động lên đơn khi gửi thông báo. Thông báo Telegram vẫn hoạt động."],
