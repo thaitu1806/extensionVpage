@@ -3,7 +3,7 @@ const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
 export default {
  async fetch(request, env) {
-  const url = new URL(request.url), path = url.pathname.replace(/\\/+$/, "") || "/";
+  const url = new URL(request.url), path = url.pathname.replace(/\/+$/, "") || "/";
   try {
    if (path === "/health") return json({ ok: true, mode: "queue-push", ts: Date.now() });
    if (path === "/telegram" && request.method === "POST") return handleTelegram(request, env);
@@ -96,7 +96,7 @@ async function handleTelegram(request, env) {
  if (!action) { await sendTelegram(env, chatId, "Không hiểu lệnh này. Gửi /help để xem các lệnh."); return json({ ok: true }); }
  const cmd = { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: action[0] === "status" ? "status" : "config", settings: action[1], chatId, ts: Date.now() };
  await env.ORDERS_QUEUE.send(cmd);
- if (action[2]) await sendTelegram(env, chatId, action[2] + "\\nĐang chuyển lệnh đến extension...");
+ if (action[2]) await sendTelegram(env, chatId, action[2] + "\nĐang chuyển lệnh đến extension...");
  return json({ ok: true, queued: true, id: cmd.id });
 }
 
