@@ -81,6 +81,8 @@ async function handleTelegram(request, env) {
   "/orders_off": ["set", { autoFillEnabled: false }, "🛑 Đã yêu cầu tắt nhận lệnh lên đơn từ Telegram."],
   "/save_on": ["set", { autoSubmitOrder: true }, "⚠️ Đã yêu cầu bật tự động bấm Lưu/gửi đơn."],
   "/save_off": ["set", { autoSubmitOrder: false }, "✅ Đã yêu cầu tắt tự động bấm Lưu/gửi đơn; đơn sẽ cần kiểm tra/lưu thủ công."],
+  "/bizai_on": ["set", { bizAiAutoContinue: true }, "✅ Đã yêu cầu bật tự động bấm “Tiếp tục trả lời” của Business AI."],
+  "/bizai_off": ["set", { bizAiAutoContinue: false }, "🛑 Đã yêu cầu tắt tự động bấm “Tiếp tục trả lời” của Business AI."],
   "/notify_on": ["set", { tgEnabled: true }, "✅ Đã yêu cầu bật thông báo Telegram."],
   "/notify_off": ["set", { tgEnabled: false }, "🛑 Đã yêu cầu tắt thông báo Telegram."],
   "/status": ["status", {}, ""]
@@ -92,6 +94,7 @@ async function handleTelegram(request, env) {
    "/auto_on | /auto_off — bật/tắt tự lên đơn khi gửi thông báo\n" +
    "/orders_on | /orders_off — bật/tắt nhận nút Lên đơn từ Telegram\n" +
    "/save_on | /save_off — bật/tắt tự động lưu/gửi đơn\n" +
+   "/bizai_on | /bizai_off — bật/tắt tự bấm “Tiếp tục trả lời” Business AI\n" +
    "/notify_on | /notify_off — bật/tắt thông báo Telegram\n\n" +
    "Lưu ý: Chrome phải mở, extension hoạt động và đã kết nối Worker. /save_on có thể tạo đơn thật.");
   return json({ ok: true });
