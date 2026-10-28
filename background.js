@@ -1603,11 +1603,11 @@ async function processPushedCommand(cmd) {
     if (cmd.type === "status") {
       const cfg = await chrome.storage.local.get({
         tgEnabled: false, autoFillEnabled: false, autoOrderOnNotify: false,
-        autoSubmitOrder: false, workerUrl: "", pullSecret: ""
+        autoSubmitOrder: false, bizAiAutoContinue: true, workerUrl: "", pullSecret: ""
       });
       await reportRemoteStatus(cmd.chatId, cfg);
     } else if (cmd.type === "config") {
-      const allowed = ["tgEnabled", "autoFillEnabled", "autoOrderOnNotify", "autoSubmitOrder"];
+      const allowed = ["tgEnabled", "autoFillEnabled", "autoOrderOnNotify", "autoSubmitOrder", "bizAiAutoContinue"];
       const settings = {};
       for (const key of allowed) if (typeof cmd.settings?.[key] === "boolean") settings[key] = cmd.settings[key];
       if (Object.keys(settings).length) await chrome.storage.local.set(settings);
