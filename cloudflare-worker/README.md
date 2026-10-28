@@ -63,7 +63,7 @@ npx wrangler secret put ALLOWED_CHAT_IDS
 - `BOT_TOKEN`: token bot Telegram từ `@BotFather`.
 - `TG_SECRET`: chuỗi bí mật xác thực webhook Telegram.
 - `PULL_SECRET`: secret kết nối WebSocket và endpoint báo trạng thái; phải trùng secret trong extension.
-- `ALLOWED_CHAT_IDS`: Chat ID được phép điều khiển, khuyến nghị chỉ điền ID cá nhân/nhóm của bạn. Có thể là danh sách ID cách nhau bằng dấu phẩy.
+- `ALLOWED_CHAT_IDS`: **bắt buộc để dùng các lệnh điều khiển**, chỉ điền Chat ID cá nhân/nhóm được phép. Có thể là danh sách ID cách nhau bằng dấu phẩy. Nếu chưa cấu hình, Worker từ chối các lệnh điều khiển (trừ `/help`).
 
 ## 4. Deploy Worker
 
