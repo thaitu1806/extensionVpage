@@ -31,7 +31,20 @@ log("content script đã nạp.");
 // tự click một lần để Agent tiếp tục trả lời. Theo dõi DOM vì nút có thể xuất hiện
 // trễ sau khi hội thoại được tải.
 let _bizAiContinueButton = null;
+let _bizAiAutoContinueEnabled = true;
+chrome.storage.local.get({ bizAiAutoContinue: true }, (cfg) => {
+  _bizAiAutoContinueEnabled = cfg.bizAiAutoContinue !== false;
+  if (_bizAiAutoContinueEnabled) clickBizAiContinueIfPresent();
+});
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "local" || !changes.bizAiAutoContinue) return;
+  _bizAiAutoContinueEnabled = changes.bizAiAutoContinue.newValue !== false;
+  if (!_bizAiAutoContinueEnabled) _bizAiContinueButton = null;
+  else clickBizAiContinueIfPresent();
+});
+
 function clickBizAiContinueIfPresent() {
+  if (!_bizAiAutoContinueEnabled) return;
   const buttons = Array.from(document.querySelectorAll(".btn-bizai-continue"))
     .filter((el) => {
       const text = textOf(el);
