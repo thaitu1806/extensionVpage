@@ -290,7 +290,7 @@ function parseOrderConfirmation(text) {
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "i");
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\n(?:" + stop + ")|$)", "i");
     const m = t.match(re);
     return m ? m[1].trim() : "";
   };
@@ -1647,18 +1647,18 @@ async function processPushedCommand(cmd) {
 
 async function reportRemoteStatus(chatId, cfg = null, prefix = "") {
   if (!chatId) return;
-  let text = prefix ? prefix + "\\n" : "";
+  let text = prefix ? prefix + "\n" : "";
   if (cfg) {
-    text += "📊 Trạng thái extension VPage\\n" +
-      "🔔 Thông báo Telegram: " + (cfg.tgEnabled ? "BẬT" : "TẮT") + "\\n" +
-      "📥 Nhận lệnh lên đơn từ Telegram: " + (cfg.autoFillEnabled ? "BẬT" : "TẮT") + "\\n" +
-      "⚙️ Tự lên đơn khi gửi thông báo: " + (cfg.autoOrderOnNotify ? "BẬT" : "TẮT") + "\\n" +
+    text += "📊 Trạng thái extension VPage\n" +
+      "🔔 Thông báo Telegram: " + (cfg.tgEnabled ? "BẬT" : "TẮT") + "\n" +
+      "📥 Nhận lệnh lên đơn từ Telegram: " + (cfg.autoFillEnabled ? "BẬT" : "TẮT") + "\n" +
+      "⚙️ Tự lên đơn khi gửi thông báo: " + (cfg.autoOrderOnNotify ? "BẬT" : "TẮT") + "\n" +
       "💾 Tự động bấm Lưu/gửi đơn: " + (cfg.autoSubmitOrder ? "BẬT" : "TẮT");
   }
   if (!text.trim()) return;
   const current = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
   if (!current.workerUrl || !current.pullSecret) return;
-  const resp = await fetch(current.workerUrl.replace(/\\/+$/, "") + "/report", {
+  const resp = await fetch(current.workerUrl.replace(/\/+$/, "") + "/report", {
     method: "POST",
     headers: { "content-type": "application/json", "x-pull-secret": current.pullSecret },
     body: JSON.stringify({ chatId, text })
