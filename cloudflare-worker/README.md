@@ -23,6 +23,8 @@ Gửi các lệnh sau trong chat với bot:
 | `/orders_off` | Tắt nhận lệnh lên đơn từ Telegram; kênh điều khiển vẫn kết nối để bật lại từ xa |
 | `/save_on` | Bật tự động bấm Lưu/gửi đơn (**có thể tạo đơn thật**) |
 | `/save_off` | Tắt tự động lưu/gửi; cần kiểm tra và lưu thủ công |
+| `/bizai_on` | Bật tự động bấm “Tiếp tục trả lời” của Business AI |
+| `/bizai_off` | Tắt tự động bấm “Tiếp tục trả lời” của Business AI; cần bấm thủ công |
 | `/notify_on` | Bật quét/thông báo Telegram |
 | `/notify_off` | Tắt quét/thông báo Telegram |
 | `/help` | Xem hướng dẫn lệnh |
