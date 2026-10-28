@@ -105,6 +105,10 @@
     <input type="number" id="scanRecentCount" min="1" max="50" step="1" value="5" />
     <div class="hint">Chỉ áp dụng khi chọn “Quét các box gần nhất, kể cả đã đọc”. Nhập từ 1 đến 50 box.</div>
 
+    <label for="tgMsgCount">Số tin nhắn gần nhất kiểm tra tracking/chặn thông báo Telegram</label>
+    <input type="number" id="tgMsgCount" min="1" max="10" step="1" value="3" />
+    <div class="hint">Áp dụng cho kiểm tra dấu hiệu tracking/CSKH và tìm nội dung đơn khi quét Telegram. Nhập từ 1 đến 10 tin; mặc định 3. Tin xác nhận lên đơn mới hơn vẫn được ưu tiên hơn tracking cũ.</div>
+
     <label for="scanIntervalMinutes">Chu kỳ tự động quét (phút)</label>
     <input type="number" id="scanIntervalMinutes" min="1" max="1440" step="1" value="3" />
     <div class="hint">Mặc định 3 phút. Chọn từ 1 đến 1440 phút; lịch quét được cập nhật khi bấm Lưu cấu hình.</div>
