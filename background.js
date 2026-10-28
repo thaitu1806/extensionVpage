@@ -980,7 +980,19 @@ async function runFill(tabId, options = {}) {
         extracted.address = norm.detail || extracted.address;
         const normalizedRegion = [norm.ward, norm.district, norm.province].filter(Boolean).join(", ");
         extracted.addressRegion = removeObsoleteHcmDistricts(normalizedRegion);
-        extracted.addressRegion2 = removeObsoleteHcmDistricts([norm.ward, norm.province].filter(Boolean).join(", "));
+
+        // Bản 2 cấp phải luôn giữ 2 cụm có ý nghĩa:
+        // - Có phường/xã: Phường/Xã + Tỉnh/Thành phố.
+        // - Chưa xác định được phường/xã nhưng có quận/huyện: Quận/Huyện + Tỉnh/Thành phố.
+        // Tránh lỗi AI trả norm.ward rỗng khiến addressRegion2 chỉ còn "Hà Nội".
+        const twoLevelParts = norm.ward
+          ? [norm.ward, norm.province]
+          : norm.district
+            ? [norm.district, norm.province]
+            : [];
+        const twoLevelRegion = twoLevelParts.filter(Boolean).join(", ")
+          || buildTwoLevelRegion(extracted.addressRegion);
+        extracted.addressRegion2 = removeObsoleteHcmDistricts(twoLevelRegion);
       }
     } catch (e) {
       blog("Chuẩn hóa địa chỉ lỗi (giữ nguyên):", e.message);
