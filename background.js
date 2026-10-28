@@ -1653,7 +1653,8 @@ async function reportRemoteStatus(chatId, cfg = null, prefix = "") {
       "🔔 Thông báo Telegram: " + (cfg.tgEnabled ? "BẬT" : "TẮT") + "\n" +
       "📥 Nhận lệnh lên đơn từ Telegram: " + (cfg.autoFillEnabled ? "BẬT" : "TẮT") + "\n" +
       "⚙️ Tự lên đơn khi gửi thông báo: " + (cfg.autoOrderOnNotify ? "BẬT" : "TẮT") + "\n" +
-      "💾 Tự động bấm Lưu/gửi đơn: " + (cfg.autoSubmitOrder ? "BẬT" : "TẮT");
+      "💾 Tự động bấm Lưu/gửi đơn: " + (cfg.autoSubmitOrder ? "BẬT" : "TẮT") + "\n" +
+      "🤖 Tự bấm Tiếp tục Business AI: " + (cfg.bizAiAutoContinue !== false ? "BẬT" : "TẮT");
   }
   if (!text.trim()) return;
   const current = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
