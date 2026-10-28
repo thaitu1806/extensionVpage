@@ -302,7 +302,8 @@ function parseOrderConfirmation(text) {
     .replace(/Tổng thanh toán\s*:/i, "\nTổng:")
     .replace(/Tổng\s*:/i, "\nTổng:")
     .replace(/Hình thức thanh toán\s*:/i, "\nHình thức thanh toán:")
-    .replace(/Theo dõi vận chuyển\s*:/i, "\nTheo dõi vận chuyển:");
+    .replace(/Theo dõi vận chuyển\s*:/i, "\nTheo dõi vận chuyển:")
+    .replace(/Ghi chú\s*:/i, "\nGhi chú:");
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -313,7 +314,7 @@ function parseOrderConfirmation(text) {
 
   const STOPS = ["Mã đơn hàng:", "Tên người nhận:", "Số điện thoại:", "Địa chỉ:",
     "Sản phẩm:", "Phí vận chuyển:", "Chiết khấu:", "Tổng:",
-    "Hình thức thanh toán:", "Theo dõi vận chuyển:"];
+    "Hình thức thanh toán:", "Theo dõi vận chuyển:", "Ghi chú:"];
 
   const name = grab("Tên người nhận:", STOPS);
   const phoneRaw = grab("Số điện thoại:", STOPS);
@@ -340,6 +341,9 @@ function parseOrderConfirmation(text) {
   const shippingFee = toNumber(grab("Phí vận chuyển:", STOPS));
   const discount = toNumber(grab("Chiết khấu:", STOPS));
   const totalCOD = toNumber(grab("Tổng:", STOPS));
+  const rawNote = grab("Ghi chú:", STOPS);
+  // "Không" nghĩa là khách không để lại ghi chú; không điền chữ này vào textarea.
+  const note = /^không\s*[.!]?$/i.test(rawNote.trim()) ? "" : rawNote.trim();
 
   // Nếu không bắt được gì cốt lõi thì coi như thất bại.
   if (!phone && !products.length) return null;
@@ -353,7 +357,7 @@ function parseOrderConfirmation(text) {
     shippingFee,
     discount,
     totalCOD,
-    note: "",
+    note,
     _source: "confirmation"
   };
 }
