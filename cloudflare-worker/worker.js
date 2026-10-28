@@ -70,6 +70,10 @@ async function handleTelegram(request, env) {
  if (!chatIdAllowed(env, chatId)) { await sendTelegram(env, chatId, "⛔ Chat này chưa được cấp quyền điều khiển."); return json({ ok: true }); }
 
  const commandName = text.split(/\s+/)[0].split("@")[0].toLowerCase();
+ if (!env.ALLOWED_CHAT_IDS && commandName !== "/help" && commandName !== "/start") {
+  await sendTelegram(env, chatId, "🔐 Chưa cấu hình ALLOWED_CHAT_IDS trên Worker. Hãy thêm Chat ID được phép trước khi dùng lệnh điều khiển.");
+  return json({ ok: true });
+ }
  const actions = {
   "/auto_on": ["set", { autoOrderOnNotify: true }, "✅ Đã yêu cầu bật tự động lên đơn khi gửi thông báo."],
   "/auto_off": ["set", { autoOrderOnNotify: false }, "🛑 Đã yêu cầu tắt tự động lên đơn khi gửi thông báo. Thông báo Telegram vẫn hoạt động."],
