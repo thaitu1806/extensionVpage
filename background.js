@@ -1573,8 +1573,10 @@ let _socketHeartbeat = null;
 let _processingCommands = new Set();
 function connectCommandSocket() {
   if (_commandSocket && (_commandSocket.readyState === WebSocket.OPEN || _commandSocket.readyState === WebSocket.CONNECTING)) return;
-  chrome.storage.local.get({ workerUrl: "", pullSecret: "", autoFillEnabled: false }, (cfg) => {
-    if (!cfg.autoFillEnabled || !cfg.workerUrl || !cfg.pullSecret) return;
+  chrome.storage.local.get({ workerUrl: "", pullSecret: "" }, (cfg) => {
+    // Luôn giữ kênh điều khiển mở kể cả khi đã tắt nhận lệnh lên đơn,
+    // để điện thoại có thể bật lại bằng /orders_on.
+    if (!cfg.workerUrl || !cfg.pullSecret) return;
     try {
       const base = cfg.workerUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:").replace(/\/+$/, "");
       const ws = new WebSocket(base + "/ws?secret=" + encodeURIComponent(cfg.pullSecret));
@@ -1591,19 +1593,77 @@ function connectCommandSocket() {
   });
 }
 async function processPushedCommand(cmd) {
-  if (!cmd || !cmd.id || !cmd.phone || _processingCommands.has(cmd.id)) return;
+  if (!cmd || !cmd.id || !cmd.type || _processingCommands.has(cmd.id)) return;
   _processingCommands.add(cmd.id);
   try {
     const state = await chrome.storage.local.get({ completedCommandIds: [] });
     const completed = Array.isArray(state.completedCommandIds) ? state.completedCommandIds : [];
     if (completed.includes(cmd.id)) { await ackPushedCommand(cmd.id); return; }
-    blog(`Push: nhận lệnh ${cmd.id} cho ${cmd.phone}.`);
-    try { await fillOrderByPhone(cmd.phone); } catch (e) { blog(`Push: lên đơn lỗi cho ${cmd.phone}: ${e.message}`); }
+
+    if (cmd.type === "status") {
+      const cfg = await chrome.storage.local.get({
+        tgEnabled: false, autoFillEnabled: false, autoOrderOnNotify: false,
+        autoSubmitOrder: false, workerUrl: "", pullSecret: ""
+      });
+      await reportRemoteStatus(cmd.chatId, cfg);
+    } else if (cmd.type === "config") {
+      const allowed = ["tgEnabled", "autoFillEnabled", "autoOrderOnNotify", "autoSubmitOrder"];
+      const settings = {};
+      for (const key of allowed) if (typeof cmd.settings?.[key] === "boolean") settings[key] = cmd.settings[key];
+      if (Object.keys(settings).length) await chrome.storage.local.set(settings);
+      const cfg = await chrome.storage.local.get({
+        tgEnabled: false, autoFillEnabled: false, autoOrderOnNotify: false,
+        autoSubmitOrder: false, workerUrl: "", pullSecret: ""
+      });
+      await reportRemoteStatus(cmd.chatId, cfg, "✅ Đã áp dụng cấu hình từ Telegram.");
+      blog("Push: đã cập nhật cấu hình từ Telegram:", JSON.stringify(settings));
+    } else if (cmd.type === "fill") {
+      const cfg = await chrome.storage.local.get({ autoFillEnabled: false });
+      if (!cfg.autoFillEnabled) {
+        await reportRemoteStatus(cmd.chatId, null, "⛔ Chưa bật nhận lệnh lên đơn. Gửi /orders_on để bật.");
+      } else {
+        blog(`Push: nhận lệnh ${cmd.id} cho ${cmd.phone}.`);
+        try {
+          const result = await fillOrderByPhone(cmd.phone);
+          const message = result?.error
+            ? "⚠️ Đã chạy lệnh nhưng có lỗi: " + String(result.error).slice(0, 500)
+            : "✅ Extension đã xử lý lệnh lên đơn cho SĐT " + cmd.phone + ". Hãy kiểm tra tab Vpage nếu cần.";
+          await reportRemoteStatus(cmd.chatId, null, message);
+        } catch (e) {
+          blog(`Push: lên đơn lỗi cho ${cmd.phone}: ${e.message}`);
+          await reportRemoteStatus(cmd.chatId, null, "❌ Lên đơn lỗi cho " + cmd.phone + ": " + e.message.slice(0, 500));
+        }
+      }
+    } else {
+      blog("Push: bỏ qua loại lệnh không hỗ trợ:", cmd.type);
+    }
+
     await chrome.storage.local.set({ completedCommandIds: [...completed.filter(id => id !== cmd.id), cmd.id].slice(-500) });
     await ackPushedCommand(cmd.id);
-    blog(`Push: đã ACK lệnh ${cmd.id}; nếu thao tác lỗi hãy kiểm tra log.`);
+    blog(`Push: đã ACK lệnh ${cmd.id}.`);
   } catch (e) { blog(`Push: xử lý lệnh ${cmd.id} lỗi:`, e.message); }
   finally { _processingCommands.delete(cmd.id); }
+}
+
+async function reportRemoteStatus(chatId, cfg = null, prefix = "") {
+  if (!chatId) return;
+  let text = prefix ? prefix + "\\n" : "";
+  if (cfg) {
+    text += "📊 Trạng thái extension VPage\\n" +
+      "🔔 Thông báo Telegram: " + (cfg.tgEnabled ? "BẬT" : "TẮT") + "\\n" +
+      "📥 Nhận lệnh lên đơn từ Telegram: " + (cfg.autoFillEnabled ? "BẬT" : "TẮT") + "\\n" +
+      "⚙️ Tự lên đơn khi gửi thông báo: " + (cfg.autoOrderOnNotify ? "BẬT" : "TẮT") + "\\n" +
+      "💾 Tự động bấm Lưu/gửi đơn: " + (cfg.autoSubmitOrder ? "BẬT" : "TẮT");
+  }
+  if (!text.trim()) return;
+  const current = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
+  if (!current.workerUrl || !current.pullSecret) return;
+  const resp = await fetch(current.workerUrl.replace(/\\/+$/, "") + "/report", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-pull-secret": current.pullSecret },
+    body: JSON.stringify({ chatId, text })
+  });
+  if (!resp.ok) throw new Error("Report HTTP " + resp.status);
 }
 async function ackPushedCommand(id) {
   const cfg = await chrome.storage.local.get({ workerUrl: "", pullSecret: "" });
