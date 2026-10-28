@@ -31,6 +31,7 @@ const DEFAULTS = {
   scanMode: "unread",
   scanStrategy: "fixed",
   scanRecentCount: 5,
+  bizAiAutoContinue: true,
   scanIntervalMinutes: 3,
   tgToken: "",
   tgChatId: "",
@@ -57,6 +58,7 @@ function load() {
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
     $("scanStrategy").value = cfg.scanStrategy === "incremental" ? "incremental" : "fixed";
     $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
+    $("bizAiAutoContinue").checked = cfg.bizAiAutoContinue !== false;
     $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
     $("tgChatId").value = cfg.tgChatId || "";
@@ -85,6 +87,7 @@ function save() {
     scanStrategy: $("scanStrategy").value === "incremental" ? "incremental" : "fixed",
     scanBaselineAt: $("scanStrategy").value === "incremental" ? Date.now() : 0,
     scanRecentCount: Math.max(1, Math.min(50, parseInt($("scanRecentCount").value, 10) || 5)),
+    bizAiAutoContinue: $("bizAiAutoContinue").checked,
     scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
     tgChatId: $("tgChatId").value.trim(),
