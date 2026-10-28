@@ -1,9 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Nhanh.vn - DeepSeek Tự Điền Đơn",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Đọc tin nhắn chat chốt đơn, dùng DeepSeek AI trích xuất thông tin và tự điền vào form tạo đơn hàng Nhanh.vn.",
-  "permissions": ["storage", "activeTab", "scripting", "webNavigation", "debugger", "alarms", "tabs"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "webNavigation",
+    "debugger",
+    "alarms",
+    "tabs"
+  ],
   "host_permissions": [
     "https://nhanh.vn/*",
     "https://vpage.nhanh.vn/*",
@@ -28,14 +36,21 @@
       ],
       "all_frames": true,
       "match_about_blank": true,
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["inject.js"],
-      "matches": ["https://nhanh.vn/*", "https://*.nhanh.vn/*"]
+      "resources": [
+        "inject.js"
+      ],
+      "matches": [
+        "https://nhanh.vn/*",
+        "https://*.nhanh.vn/*"
+      ]
     }
   ]
 }
