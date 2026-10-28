@@ -28,6 +28,7 @@ const DEFAULTS = {
   promoOther: "",
   hcmProvinces: "Bình Dương, Bà Rịa - Vũng Tàu, Đồng Nai, Long An, Tây Ninh, Bình Phước",
   tgEnabled: false,
+  tgMsgCount: 3,
   scanMode: "unread",
   scanStrategy: "fixed",
   scanRecentCount: 5,
@@ -55,6 +56,7 @@ function load() {
     $("promoOther").value = cfg.promoOther || "";
     $("hcmProvinces").value = cfg.hcmProvinces || "";
     $("tgEnabled").checked = !!cfg.tgEnabled;
+    $("tgMsgCount").value = String(Math.max(1, Math.min(10, parseInt(cfg.tgMsgCount, 10) || 3)));
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
     $("scanStrategy").value = cfg.scanStrategy === "incremental" ? "incremental" : "fixed";
     $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
@@ -83,6 +85,7 @@ function save() {
     promoOther: $("promoOther").value.trim(),
     hcmProvinces: $("hcmProvinces").value.trim(),
     tgEnabled: $("tgEnabled").checked,
+    tgMsgCount: Math.max(1, Math.min(10, parseInt($("tgMsgCount").value, 10) || 3)),
     scanMode: $("scanMode").value === "recent5" ? "recent5" : "unread",
     scanStrategy: $("scanStrategy").value === "incremental" ? "incremental" : "fixed",
     scanBaselineAt: $("scanStrategy").value === "incremental" ? Date.now() : 0,
