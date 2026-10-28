@@ -19,8 +19,9 @@ function hasRecentTrackingInbox(messages) {
 
 // Dừng hoàn toàn thông báo Telegram và tự lên đơn nếu 3 tin cuối đã là tin hậu xử lý/CSKH.
 // Danh sách tin được trả theo thứ tự cũ -> mới, nên slice(-3) là 3 tin mới nhất từ dưới lên.
-function hasRecentStopPhrase(messages) {
-  const recent = (Array.isArray(messages) ? messages : []).slice(-3);
+function hasRecentStopPhrase(messages, count = 3) {
+  const limit = Math.min(Math.max(parseInt(count, 10) || 3, 1), 10);
+  const recent = (Array.isArray(messages) ? messages : []).slice(-limit);
   const stopPhrases = ["theo doi van chuyen", "thong bao tu bep", "tran trong"];
   // Một tin xác nhận đơn mới hơn phải thắng dấu tracking cũ hơn trong cùng cửa sổ.
   // Ví dụ: tin cũ có link tracking, sau đó shop nhắn "lên đơn thành công" cho đơn mới.
@@ -873,7 +874,7 @@ async function runFill(tabId, options = {}) {
   }
 
   // Chặn trước khi gọi AI hoặc mở/điền form.
-  if (hasRecentStopPhrase(collected.messages)) {
+  if (hasRecentStopPhrase(collected.messages, msgCount)) {
     throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
   }
 
@@ -1307,7 +1308,7 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
-    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", scanMode: "unread", scanStrategy: "fixed", scanBaselineAt: 0,
+    tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", tgMsgCount: 3, scanMode: "unread", scanStrategy: "fixed", scanBaselineAt: 0,
     autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
@@ -1320,7 +1321,7 @@ async function runScanCycle() {
   }
 
   // Số tin GẦN NHẤT cần đọc trong mỗi hội thoại (từ dưới lên). Mặc định 3.
-  const lastN = Math.min(Math.max(parseInt(cfg.msgCount, 10) || 3, 1), 10);
+  const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
 
   const tab = await findConversationTab();
   if (!tab) { blog("Quét: không có tab vpage mở -> bỏ qua."); return; }
@@ -1366,7 +1367,7 @@ async function runScanCycle() {
     // 3) Kiểm tra 3 tin mới nhất trước mọi luồng Telegram/tự lên đơn.
     // Nếu gặp tracking hoặc tin hệ thống/CSKH của Bếp thì bỏ qua hội thoại này ngay.
     const recentMessages = await getRecentConversationMessages(tab.id, lastN);
-    if (hasRecentStopPhrase(recentMessages)) {
+    if (hasRecentStopPhrase(recentMessages, lastN)) {
       blog(`Quét: "${conv.name}" - 3 tin mới nhất có "Theo dõi vận chuyển", "Thông báo từ Bếp" hoặc "Trân trọng"; dừng, không gửi Telegram và không tự lên đơn.`);
       continue;
     }
