@@ -1054,12 +1054,13 @@ async function fillAddressRegion(region3, region2) {
   }
 
   if (isTwoLevel) {
-    // Địa chỉ 2 cấp -> gõ 2 cấp.
-    log(`fillAddressRegion: thử 2 cấp "${r2}"`);
-    if (await tryPickRegion(input, r2)) return true;
-    // Dự phòng: thử 3 cấp nếu 2 cấp không ra.
-    log("fillAddressRegion: 2 cấp không ra -> thử lại 3 cấp.");
+    // ƯU TIÊN addressRegion (đầy đủ/ngữ cảnh hơn) trước addressRegion2.
+    // Chỉ fallback về addressRegion2 khi truy vấn addressRegion không tìm được
+    // kết quả phù hợp; tránh chọn tỉnh/thành quá rộng chỉ vì có 1 gợi ý.
+    log(`fillAddressRegion: ưu tiên addressRegion trước: "${region3}"`);
     if (await tryPickRegion(input, region3)) return true;
+    log(`fillAddressRegion: addressRegion không khớp -> fallback addressRegion2 "${r2}"`);
+    if (await tryPickRegion(input, r2)) return true;
     return false;
   }
 
@@ -1366,10 +1367,23 @@ function districtNumberOf(s) {
 }
 
 function pickBestRegion(items, regionText) {
-  // Quy tắc ưu tiên: nếu tìm kiếm chỉ trả về ĐÚNG 1 gợi ý, chọn thẳng gợi ý đó.
-  // Nhiều phường là duy nhất; không bắt buộc phải map thêm tỉnh/quận trong trường hợp này.
+  // Chỉ chọn thẳng khi có đúng 1 gợi ý nếu gợi ý đó không quá rộng.
+  // Ví dụ query "Long Biên, Hà Nội" nhưng kết quả duy nhất là "Hà Nội":
+  // đây chỉ là tỉnh/thành, không xác nhận được phần "Long Biên", nên phải bỏ
+  // qua và để caller thử query/fallback tiếp theo.
   if (Array.isArray(items) && items.length === 1) {
-    log(`pickBestRegion: chỉ có 1 gợi ý -> chọn trực tiếp "${textOf(items[0])}", bỏ qua mapping.`);
+    const candidateText = textOf(items[0]).trim();
+    const targetParts = (regionText || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const candidateParts = candidateText.split(/[，,\n]/).map((s) => s.trim()).filter(Boolean);
+    const candidateIsOnlyTargetProvince =
+      targetParts.length >= 2 &&
+      candidateParts.length === 1 &&
+      sameProvinceName(candidateParts[0], targetParts[targetParts.length - 1]);
+    if (candidateIsOnlyTargetProvince) {
+      log(`pickBestRegion: chỉ có 1 gợi ý "${candidateText}" nhưng không xác nhận được địa giới chi tiết của "${regionText}" -> không chọn, thử query/fallback khác.`);
+      return null;
+    }
+    log(`pickBestRegion: chỉ có 1 gợi ý -> chọn trực tiếp "${candidateText}".`);
     return items[0];
   }
 
