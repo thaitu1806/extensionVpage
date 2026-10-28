@@ -576,7 +576,9 @@ function normName(s) {
   return (s || "")
     .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/\([^)]*\)/g, " ")
+    // Chỉ bỏ ngoặc quy cách/khối lượng; giữ "(Cay Vừa)", "(Siêu Cay)", "(Không Cay)"
+    // để mapProductsToCatalog nhận diện đúng biến thể, tránh chọn nhầm vị.
+    .replace(/\(\s*\d+\s*(?:g|gr|gram|kg)\s*\)/g, " ")
     .replace(/\b\d+\s*(g|gr|gram|kg)\b/g, " ")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
