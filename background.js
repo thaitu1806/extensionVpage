@@ -313,7 +313,7 @@ function parseOrderConfirmation(text) {
     .replace(/Theo dõi vận chuyển\s*:/i, "\nTheo dõi vận chuyển:")
     .replace(/Ghi chú\s*:/i, "\nGhi chú:")
     .replace(/(?<!Tên )Người nhận\s*:/i, "\nTên người nhận:")
-    .replace(/Vận chuyển\s*:/i, "\nVận chuyển:");
+    .replace(/(?<!Phí )Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
