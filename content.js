@@ -457,7 +457,8 @@ async function fillForm(data) {
     log(`Kết quả thêm sản phẩm: ${added}/${data.products.length}`);
   }
 
-  // THỨ TỰ: Sản phẩm -> Mã khuyến mại -> Chiết khấu -> Phí ship.
+  // THỨ TỰ webhook: Sản phẩm -> Mã KM -> Chiết khấu -> chờ 4s
+  // -> Phí ship -> chờ 4s -> chọn trạng thái và tự động Lưu.
 
   // 1) Mã khuyến mại HVC (theo địa chỉ HCM/ngoại tỉnh).
   if (data.promoCode) {
@@ -466,8 +467,52 @@ async function fillForm(data) {
     if (okPromo) done.push("mã KM");
   }
 
-  // Phí ship có thể làm Nhanh.vn tính lại phần thanh toán/chiết khấu.
-  // Vì vậy phải set phí ship trước, chiết khấu luôn là bước cuối.
+  // 2) Chiết khấu trước phí ship theo thứ tự yêu cầu.
+  const discount = computeDiscount(data);
+  {
+    const productsTotal = (data.products || []).reduce(
+      (s, p) => s + ((Number(p.overridePrice) > 0 ? Number(p.overridePrice) : (Number(p.price) || 0))
+        * (Number(p.quantity) || 1)), 0);
+    log(`Chiết khấu: tổngHàngTheoGiáChốt=${productsTotal} + ship=${Number(data.shippingFee) || 0}`
+      + ` - COD=${Number(data.totalCOD) || 0} = ${discount}`
+      + (Number(data.discount) ? ` (discount gốc=${data.discount})` : ""));
+  }
+
+  if (discount > 0) {
+    const unitCash = ensureDiscountUnitCash();
+    log("Đơn vị chiết khấu tiền mặt ($) sẵn sàng =", unitCash);
+    await sleep(500);
+
+    let el = findDiscountInput();
+    log("Tìm ô 'Chiết khấu':", el ? "OK" : "KHÔNG THẤY");
+    if (el) {
+      let okDc = await setNumericByPaste(el, discount);
+      await sleep(700);
+      el = findDiscountInput();
+      let actual = el ? readNumber(el.value) : NaN;
+      log(`Xác minh chiết khấu: mong muốn=${discount}, thực tế=${actual}`);
+
+      if (actual !== Number(discount) && el) {
+        log("Chiết khấu chưa đúng; thử nhập lại một lần.");
+        okDc = await setNumericByPaste(el, discount);
+        await sleep(900);
+        el = findDiscountInput();
+        actual = el ? readNumber(el.value) : NaN;
+        log(`Xác minh chiết khấu lần 2: mong muốn=${discount}, thực tế=${actual}`);
+      }
+
+      const verified = actual === Number(discount);
+      log(`-> set chiết khấu ${discount}: thao tác=${okDc}, xác minh cuối=${verified}`);
+      if (verified) done.push("chiết khấu");
+      else log("CẢNH BÁO: ô Chiết khấu không giữ được giá trị mong muốn; cần kiểm tra form trước khi lưu.");
+    }
+  } else {
+    log("Chiết khấu bằng 0 hoặc không có dữ liệu; bỏ qua nhập chiết khấu.");
+  }
+
+  // Chờ 4 giây để form nhận/commit chiết khấu trước khi thay đổi phí ship.
+  log("Webhook: chờ 4 giây sau khi nhập chiết khấu trước khi nhập phí ship...");
+  await sleep(4000);
 
   // 3) Phí ship: CHỈ set sau khi hãng vận chuyển (carrier) đã load.
   if (data.shippingFee !== undefined && data.shippingFee !== null && data.shippingFee !== "") {
@@ -485,49 +530,9 @@ async function fillForm(data) {
     }
   }
 
-  // Chiết khấu luôn nhập SAU phí ship, vì thay đổi phí ship có thể khiến form tự tính lại
-  // và ghi đè chiết khấu vừa nhập về 0. Chờ UI settle rồi mới nhập và xác minh lại.
-  const discount = computeDiscount(data);
-  {
-    const productsTotal = (data.products || []).reduce(
-      (s, p) => s + ((Number(p.overridePrice) > 0 ? Number(p.overridePrice) : (Number(p.price) || 0))
-        * (Number(p.quantity) || 1)), 0);
-    log(`Chiết khấu (nhập sau phí ship): tổngHàngTheoGiáChốt=${productsTotal} + ship=${Number(data.shippingFee) || 0}`
-      + ` - COD=${Number(data.totalCOD) || 0} = ${discount}`
-      + (Number(data.discount) ? ` (discount gốc=${data.discount})` : ""));
-  }
-
-  if (discount > 0) {
-    // Đổi đơn vị tiền mặt trước, đợi form cập nhật rồi tìm lại ô để tránh dùng node cũ.
-    const unitCash = ensureDiscountUnitCash();
-    log("Đơn vị chiết khấu tiền mặt ($) sẵn sàng =", unitCash);
-    await sleep(500);
-
-    let el = findDiscountInput();
-    log("Tìm ô 'Chiết khấu' sau khi phí ship ổn định:", el ? "OK" : "KHÔNG THẤY");
-    if (el) {
-      let okDc = await setNumericByPaste(el, discount);
-      await sleep(700);
-      el = findDiscountInput();
-      let actual = el ? readNumber(el.value) : NaN;
-      log(`Xác minh chiết khấu sau cập nhật form: mong muốn=${discount}, thực tế=${actual}`);
-
-      // Nếu UI vừa tự tính lại/ghi đè, nhập lại đúng một lần sau khi form đã ổn định.
-      if (actual !== Number(discount) && el) {
-        log("Chiết khấu bị form ghi đè hoặc chưa commit; thử nhập lại một lần.");
-        okDc = await setNumericByPaste(el, discount);
-        await sleep(900);
-        el = findDiscountInput();
-        actual = el ? readNumber(el.value) : NaN;
-        log(`Xác minh chiết khấu lần 2: mong muốn=${discount}, thực tế=${actual}`);
-      }
-
-      const verified = actual === Number(discount);
-      log(`-> set chiết khấu ${discount}: thao tác=${okDc}, xác minh cuối=${verified}`);
-      if (verified) done.push("chiết khấu");
-      else log("CẢNH BÁO: ô Chiết khấu không giữ được giá trị mong muốn; cần kiểm tra form trước khi lưu.");
-    }
-  }
+  // Chờ thêm 4 giây sau khi nhập phí ship để mọi tính toán hoàn tất trước khi Lưu.
+  log("Webhook: chờ 4 giây sau khi nhập phí ship trước khi tiếp tục/lưu đơn...");
+  await sleep(4000);
 
   // Webhook lấy trạng thái từ cấu hình; mặc định "Mới" để kiểm thử an toàn.
   if (data.mode === "webhook" || data.mode === "test") {
@@ -547,8 +552,7 @@ async function fillForm(data) {
       const saved = await clickSaveButton(45000);
       if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
       done.push("lưu");
-      // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.
-    } else {
+      // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.    } else {
       log("Webhook: chế độ kiểm thử — đã điền form nhưng KHÔNG bấm Lưu; giữ tab mở để kiểm tra.");
       done.push("chưa lưu (chế độ kiểm thử)");
     }
@@ -1097,7 +1101,6 @@ async function fillAddressRegion(region3, region2) {
   // Địa chỉ 3 cấp (toggle đã TẮT ở trên): thử 3 cấp trước.
   log(`fillAddressRegion: thử 3 cấp "${region3}"`);
   if (await tryPickRegion(input, region3)) return true;
-
   // Nếu đã chọn được kết quả nhưng placeholder chỉ có Quận/Tỉnh (thiếu phường),
   // cho phép fallback 2 cấp kể cả khi địa chỉ ban đầu được ép tìm 3 cấp.
   // Các trường hợp ép 3 cấp khác vẫn giữ nguyên hành vi cũ nếu không có dấu hiệu thiếu phường.
@@ -1647,8 +1650,7 @@ function findProductRow(fullName) {
   const rows = Array.from(document.querySelectorAll("tr.productItem"));
   const target = normalize(fullName);
   let best = null, bestScore = -1;
-  for (const r of rows) {
-    const rowName = normalize(textOf(r.querySelector(".productName")));
+  for (const r of rows) {    const rowName = normalize(textOf(r.querySelector(".productName")));
     let score = 0;
     if (rowName === target) score = 100;
     else if (rowName.includes(target) || target.includes(rowName)) score = 50;
