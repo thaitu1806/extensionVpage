@@ -195,7 +195,8 @@ function parseProductLines(block) {
     // ở CUỐI phần tên HOẶC ngay trước dấu phân cách sản phẩm kế (; ,) để xử lý
     // nhiều sản phẩm có giá nằm trên cùng một dòng.
     let price = 0;
-    const priceM = rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*[;,]?\s*$/);
+    const priceM = rest.match(/\s*\(\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*\)\s*[;,]?\s*$/)
+      || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*[;,]?\s*$/);
     if (priceM) {
       price = toNumber(priceM[1]);
       rest = rest.slice(0, priceM.index).trim();
@@ -304,7 +305,7 @@ function parseOrderConfirmation(text) {
     .replace(/Hình thức thanh toán\s*:/i, "\nHình thức thanh toán:")
     .replace(/Theo dõi vận chuyển\s*:/i, "\nTheo dõi vận chuyển:")
     .replace(/Ghi chú\s*:/i, "\nGhi chú:")
-    .replace(/Người nhận\s*:/i, "\nTên người nhận:")
+    .replace(/(?<!Tên )Người nhận\s*:/i, "\nTên người nhận:")
     .replace(/Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
