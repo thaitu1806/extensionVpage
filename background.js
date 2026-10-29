@@ -687,8 +687,13 @@ function mapProductsToCatalog(products, catalogList) {
       // tổng tiền hàng & chiết khấu lệch. Chỉ dùng p.price khi catalog KHÔNG có giá.
       const catalogPrice = Number(best.price) || 0;
       const extractedPrice = Number(p.price) || 0;
-      const price = catalogPrice > 0 ? catalogPrice : extractedPrice;
-      if (catalogPrice > 0 && extractedPrice > 0 && extractedPrice !== catalogPrice) {
+      // Với đơn dán test thủ công, giá ghi ngay trong nội dung là giá cần kiểm thử.
+      // Các luồng chat tự động vẫn ưu tiên giá CATALOG như trước.
+      const price = extracted._source === "manual-test" && extractedPrice > 0
+        ? extractedPrice
+        : (catalogPrice > 0 ? catalogPrice : extractedPrice);
+      if (!(extracted._source === "manual-test" && extractedPrice > 0)
+          && catalogPrice > 0 && extractedPrice > 0 && extractedPrice !== catalogPrice) {
         blog(`DIAG giá "${best.name}": dùng GIÁ CATALOG ${catalogPrice} (bỏ giá trích ${extractedPrice}).`);
       }
       return {
