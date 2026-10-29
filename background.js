@@ -341,9 +341,17 @@ function parseOrderConfirmation(text) {
   const products = parseProductLines(productsBlock);
   blog("DIAG parseOrderConfirmation: products =", JSON.stringify(products));
 
-  const shippingFee = toNumber(grab("Phí vận chuyển:", STOPS));
-  const discount = toNumber(grab("Chiết khấu:", STOPS));
-  const totalCOD = toNumber(grab("Tổng:", STOPS));
+  // Các tin nhắn chat tiếp theo có thể nằm ngay sau "Tổng: 279,000"
+  // và chứa SĐT. Không được gom tất cả chữ số trong cả đoạn (sẽ thành
+  // 2790000939790038). Chỉ parse token tiền đầu tiên sau mỗi nhãn.
+  const grabMoney = (label) => {
+    const raw = grab(label, STOPS);
+    const firstAmount = raw.match(/\d[\d.,]*/);
+    return firstAmount ? toNumber(firstAmount[0]) : 0;
+  };
+  const shippingFee = grabMoney("Phí vận chuyển:");
+  const discount = grabMoney("Chiết khấu:");
+  const totalCOD = grabMoney("Tổng:");
   const rawNote = grab("Ghi chú:", STOPS);
   // "Không" nghĩa là khách không để lại ghi chú; không điền chữ này vào textarea.
   const note = /^không\s*[.!]?$/i.test(rawNote.trim()) ? "" : rawNote.trim();
