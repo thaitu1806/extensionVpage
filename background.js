@@ -109,7 +109,8 @@ function removeObsoleteHcmDistricts(region) {
   return cleaned.join(", ").replace(/\\s{2,}/g, " ").trim();
 }
 function cleanAddress(addr) {
-  return addr
+  return String(addr || "")
+    .replace(/,\s*(?:vi[eệ]t\s*nam)\s*$/iu, "") // bỏ quốc gia ở cuối trước khi xác định cấp địa chỉ
     .replace(/\s*,\s*,\s*/g, ", ") // bỏ dấu phẩy rỗng ", ,"
     .replace(/\s{2,}/g, " ")
     .replace(/^,|,$/g, "")
@@ -459,7 +460,9 @@ Quy tắc:
 - Viết tắt thường gặp: 'p'/'P.' = Phường, 'q'/'Q.' = Quận, 'tp' = Thành phố, 'c/c' = chung cư, 'đ'/'đường' = đường.
 - Chuẩn hóa hoa thường đúng tên riêng.
 - Chỉ dùng thông tin có trong địa chỉ gốc, KHÔNG bịa phường/quận không có.
-- Nếu không rõ quận, để district = ''.`;
+- Phải giữ lại TẤT CẢ cấp hành chính được nêu rõ trong địa chỉ gốc; không được bỏ qua tên thành phố/quận nằm giữa phường và tỉnh.
+- Ví dụ: "84/9 Quang Trung, Lộc Thọ, Nha Trang, Khánh Hòa" -> ward="Phường Lộc Thọ", district="Thành phố Nha Trang", province="Khánh Hòa".
+- Chỉ để district = '' khi địa chỉ gốc thực sự không nêu cấp quận/huyện/thành phố.`;
 
   const resp = await fetch(DEEPSEEK_URL, {
     method: "POST",
