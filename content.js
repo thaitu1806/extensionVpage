@@ -1505,15 +1505,30 @@ async function addProducts(products) {
         count++;
         await sleep(500);
 
-        const qty = p.quantity || 1;
+        const qty = Math.max(1, Number(p.quantity) || 1);
         if (qty > 1) {
-          // Số lượng là phần tử trong mảng products[] của Angular (khác chiết khấu/
-          // phí ship là FormControl đơn). Paste chỉ đổi DOM, KHÔNG cập nhật
-          // products[i].quantity + không chạy calculateFee -> model sai.
-          // => Bắt buộc THÊM LẠI sản phẩm (đi qua addProduct() -> model đúng).
-          log(`-> cần SL=${qty}, tăng bằng cách thêm lại sản phẩm.`);
-          const okQty = await increaseQtyByReAdd(input, fullName, qty, p.search);
-          log(`-> tăng SL bằng cách thêm lại = ${okQty}`);
+          // Ưu tiên nhập trực tiếp số lượng vào ô SL như giá bán.
+          // Chỉ chấp nhận nếu tổng SL của bảng (Angular model) phản ánh đúng thay đổi;
+          // nếu component không cập nhật model thì trả ô về 1 rồi fallback cách thêm lại.
+          const baselineTotalQty = totalQtyFromSummary();
+          log(`-> thử nhập trực tiếp SL=${qty}; tổng SL trước=${baselineTotalQty}`);
+          const directQtyOk = await setQuantityForProduct(fullName, qty);
+          await sleep(700);
+          const totalAfterDirect = totalQtyFromSummary();
+          const directModelOk = directQtyOk
+            && Number.isFinite(baselineTotalQty)
+            && Number.isFinite(totalAfterDirect)
+            && totalAfterDirect === baselineTotalQty + qty - 1;
+          log(`-> nhập trực tiếp SL: inputOk=${directQtyOk}, tổng SL sau=${totalAfterDirect}, modelOk=${directModelOk}`);
+
+          if (!directModelOk) {
+            // Khôi phục số lượng 1 trước khi dùng fallback để tránh cộng trùng.
+            await setQuantityForProduct(fullName, 1);
+            await sleep(500);
+            log(`-> ô SL không cập nhật model; fallback thêm lại sản phẩm để đạt SL=${qty}`);
+            const okQty = await increaseQtyByReAdd(input, fullName, qty, p.search);
+            log(`-> fallback tăng SL bằng cách thêm lại = ${okQty}`);
+          }
         }
 
         // Chỉ ghi đè giá khi nội dung đơn có giá cụ thể khác giá catalog.
