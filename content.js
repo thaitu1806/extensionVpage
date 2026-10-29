@@ -260,8 +260,13 @@ function findByPlaceholder(...keywords) {
   const inputs = Array.from(document.querySelectorAll("input, textarea"));
   for (const kw of keywords) {
     const low = kw.toLowerCase();
-    const hit = inputs.find((el) => (el.placeholder || "").toLowerCase().includes(low));
-    if (hit) return hit;
+    const hits = inputs.filter((el) => (el.placeholder || "").toLowerCase().includes(low));
+    // Ưu tiên ô đang hiển thị và không aria-hidden (Nhanh.vn có thể render input phụ).
+    const visible = hits.filter((el) => el.isConnected && el.getClientRects().length > 0 && !el.disabled);
+    const accessible = visible.find((el) => el.getAttribute("aria-hidden") !== "true");
+    if (accessible) return accessible;
+    if (visible.length) return visible[0];
+    if (hits.length) return hits[0];
   }
   return null;
 }
@@ -398,78 +403,53 @@ async function fillForm(data) {
     const el = findByPlaceholder("Tên");
     log("Tìm ô 'Tên':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
-      const currentName = String(el.value || "").replace(/\\s+/g, " ").trim();
-      const incomingName = String(data.name || "").replace(/\\s+/g, " ").trim();
-      // So sánh không phân biệt chữ hoa/thường và dấu tiếng Việt để tránh cập nhật
-      // lại khi tên thực chất giống nhau, chỉ khác cách viết.
-      if (normalize(currentName) === normalize(incomingName)) {
-        log("-> tên khách trên form đã khớp tên khách cung cấp, BỎ QUA.");
-      } else {
-        log(`-> tên khách trên form khác dữ liệu khách: hiện tại="${currentName}", mới="${incomingName}" -> cập nhật.`);
-        setNativeValue(el, incomingName);
-        fireFocusBlur(el);
-        done.push("tên");
-      }
+      const incomingName = String(data.name || "").replace(/\s+/g, " ").trim();
+      log(`-> GHI ĐÈ tên khách: giá trị cũ="${el.value || ""}", giá trị mới="${incomingName}".`);
+      setNativeValue(el, incomingName);
+      fireFocusBlur(el);
+      done.push("tên");
     }
   }
   if (data.phone) {
     const el = findByPlaceholder("Điện thoại", "Số điện thoại", "SĐT");
     log("Tìm ô 'Điện thoại':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
-      const currentPhone = String(el.value || "").replace(/\D/g, "");
       const incomingPhone = String(data.phone).replace(/\D/g, "");
-      if (currentPhone === incomingPhone) {
-        log("-> SĐT trên form đã khớp SĐT khách cung cấp, BỎ QUA.");
-      } else {
-        log(`-> SĐT trên form khác dữ liệu khách: hiện tại="${currentPhone}", mới="${incomingPhone}" -> cập nhật.`);
-        setNativeValue(el, incomingPhone);
-        fireFocusBlur(el);
-        done.push("sđt");
-      }
+      log(`-> GHI ĐÈ SĐT: giá trị cũ="${el.value || ""}", giá trị mới="${incomingPhone}".`);
+      setNativeValue(el, incomingPhone);
+      fireFocusBlur(el);
+      done.push("sđt");
     }
   }
-  // Địa chỉ hành chính (Tỉnh/Huyện/Xã) - luôn so sánh lựa chọn đang hiển thị
-  // (thường nằm trong placeholder) với địa chỉ khách cung cấp; khác thì chọn lại.
+  // Luôn chọn lại địa chỉ hành chính từ dữ liệu khách, không bỏ qua dù form đang có giá trị.
   if (data.addressRegion) {
-    const regionEl = findAddressRegionInput();
-    const currentRegion = getRegionDisplayText(regionEl);
-    if (regionEl && sameRegionSelection(currentRegion, data.addressRegion)) {
-      log(`-> địa chỉ hành chính đã khớp khách cung cấp: "${currentRegion}", BỎ QUA.`);
-    } else {
-      log(`-> địa chỉ hành chính khác dữ liệu khách: hiện tại="${currentRegion}", mới="${data.addressRegion}" -> chọn lại.`);
-      let okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-      let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-      let verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-      log(`Điền địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
-      if (!verified) {
-        log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
-        okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-        log(`Điền địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
-      }
-      if (verified) done.push("tỉnh/xã");
-      else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách. Khách cung cấp="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
+    const currentRegion = getRegionDisplayText(findAddressRegionInput());
+    log(`-> GHI ĐÈ địa chỉ hành chính: cũ="${currentRegion}", mới="${data.addressRegion}" -> chọn lại.`);
+    let okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+    let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+    let verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+    log(`Chọn địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+    if (!verified) {
+      log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
+      okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+      verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+      verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+      log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
     }
+    if (verified) done.push("tỉnh/xã");
+    else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách. Khách cung cấp="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
   }
 
-  // Địa chỉ chi tiết (số nhà/đường) - ô app-location-autocomplete, là text thường.
-  // Nếu địa chỉ đang có khác với địa chỉ lấy từ tin nhắn thì cập nhật lại;
-  // chỉ bỏ qua khi hai giá trị sau trim giống nhau.
+  // Luôn ghi đè địa chỉ chi tiết bằng dữ liệu khách cung cấp.
   if (data.address) {
     const el = findAddressDetailInput();
     log("Tìm ô 'Địa chỉ chi tiết':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
-      const currentAddress = (el.value || "").trim();
       const incomingAddress = String(data.address).trim();
-      if (currentAddress === incomingAddress) {
-        log("-> ô 'Địa chỉ chi tiết' đã đúng giá trị, BỎ QUA.");
-      } else {
-        log(`-> địa chỉ chi tiết thay đổi: hiện tại="${currentAddress}", mới="${incomingAddress}" -> cập nhật.`);
-        setNativeValue(el, incomingAddress);
-        fireFocusBlur(el);
-        done.push("địa chỉ");
-      }
+      log(`-> GHI ĐÈ địa chỉ chi tiết: giá trị cũ="${el.value || ""}", giá trị mới="${incomingAddress}".`);
+      setNativeValue(el, incomingAddress);
+      fireFocusBlur(el);
+      done.push("địa chỉ");
     }
   }
   if (data.note) {
