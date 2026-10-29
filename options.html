@@ -65,6 +65,13 @@
     </div>
 
     <div class="divider"></div>
+    <h1 style="font-size:16px;">Test lên đơn thủ công</h1>
+    <p class="desc">Dán nguyên văn nội dung xác nhận đơn vào đây. Extension sẽ phân tích và điền vào form Vpage đang mở, chọn trạng thái “Mới” và KHÔNG bấm Lưu.</p>
+    <label for="manualOrderText">Nội dung đơn hàng</label>
+    <textarea id="manualOrderText" style="min-height:190px;" placeholder="Chi tiết đơn hàng&#10;Người nhận: Như&#10;Số điện thoại: 0964511030&#10;Địa chỉ: 16 đường D16, KDC Minh Châu, Phường 7, TP Sóc Trăng&#10;Sản phẩm: 20 x Cơm cháy Gạo Thường - Không Cay (60,000)&#10;Phí vận chuyển: 35,000&#10;Chiết khấu: 0&#10;Vận chuyển: Giao thường&#10;Ghi chú: Không dán tem - khách dán tem riêng&#10;Tổng: 1,235,000"></textarea>
+    <div class="hint">Cần đăng nhập Vpage trước. Chức năng này không gọi DeepSeek và không tự lưu đơn; sau khi điền, hãy kiểm tra kỹ sản phẩm, địa chỉ, phí ship và ghi chú trước khi tự lưu.</div>
+    <button id="manualOrderTest" style="background:#7c3aed; margin-top:10px;">Phân tích &amp; điền thử đơn</button>
+    <div class="status" id="manualOrderStatus"></div>
 
     <div class="divider"></div>
 
