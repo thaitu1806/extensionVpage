@@ -466,28 +466,8 @@ async function fillForm(data) {
     if (okPromo) done.push("mã KM");
   }
 
-  // 2) Đơn vị chiết khấu phải là $ trước khi nhập số tiền chiết khấu.
-  ensureDiscountUnitCash();
-
-  // 3) Chiết khấu = tổng tiền hàng - COD - phí ship.
-  const discount = computeDiscount(data);
-  {
-    const productsTotal = (data.products || []).reduce(
-      (s, p) => s + ((Number(p.overridePrice) > 0 ? Number(p.overridePrice) : (Number(p.price) || 0))
-        * (Number(p.quantity) || 1)), 0);
-    log(`Chiết khấu: tổngHàngTheoGiáChốt=${productsTotal} + ship=${Number(data.shippingFee) || 0}`
-      + ` - COD=${Number(data.totalCOD) || 0} = ${discount}`
-      + (Number(data.discount) ? ` (discount gốc=${data.discount})` : ""));
-  }
-  if (discount > 0) {
-    const el = findDiscountInput();
-    log("Tìm ô 'Chiết khấu':", el ? "OK" : "KHÔNG THẤY");
-    if (el) {
-      const okDc = await setNumericByPaste(el, discount);
-      log(`-> set chiết khấu ${discount} = ${okDc}`);
-      if (okDc) done.push("chiết khấu");
-    }
-  }
+  // Phí ship có thể làm Nhanh.vn tính lại phần thanh toán/chiết khấu.
+  // Vì vậy phải set phí ship trước, chiết khấu luôn là bước cuối.
 
   // 3) Phí ship: CHỈ set sau khi hãng vận chuyển (carrier) đã load.
   if (data.shippingFee !== undefined && data.shippingFee !== null && data.shippingFee !== "") {
@@ -502,6 +482,50 @@ async function fillForm(data) {
       if (okFee) done.push("phí ship");
     } else if (!carrierReady) {
       log("-> carrier chưa load -> BỎ QUA phí ship (để hệ thống tự tính).");
+    }
+  }
+
+  // Chiết khấu luôn nhập SAU phí ship, vì thay đổi phí ship có thể khiến form tự tính lại
+  // và ghi đè chiết khấu vừa nhập về 0. Chờ UI settle rồi mới nhập và xác minh lại.
+  const discount = computeDiscount(data);
+  {
+    const productsTotal = (data.products || []).reduce(
+      (s, p) => s + ((Number(p.overridePrice) > 0 ? Number(p.overridePrice) : (Number(p.price) || 0))
+        * (Number(p.quantity) || 1)), 0);
+    log(`Chiết khấu (nhập sau phí ship): tổngHàngTheoGiáChốt=${productsTotal} + ship=${Number(data.shippingFee) || 0}`
+      + ` - COD=${Number(data.totalCOD) || 0} = ${discount}`
+      + (Number(data.discount) ? ` (discount gốc=${data.discount})` : ""));
+  }
+
+  if (discount > 0) {
+    // Đổi đơn vị tiền mặt trước, đợi form cập nhật rồi tìm lại ô để tránh dùng node cũ.
+    const unitCash = ensureDiscountUnitCash();
+    log("Đơn vị chiết khấu tiền mặt ($) sẵn sàng =", unitCash);
+    await sleep(500);
+
+    let el = findDiscountInput();
+    log("Tìm ô 'Chiết khấu' sau khi phí ship ổn định:", el ? "OK" : "KHÔNG THẤY");
+    if (el) {
+      let okDc = await setNumericByPaste(el, discount);
+      await sleep(700);
+      el = findDiscountInput();
+      let actual = el ? readNumber(el.value) : NaN;
+      log(`Xác minh chiết khấu sau cập nhật form: mong muốn=${discount}, thực tế=${actual}`);
+
+      // Nếu UI vừa tự tính lại/ghi đè, nhập lại đúng một lần sau khi form đã ổn định.
+      if (actual !== Number(discount) && el) {
+        log("Chiết khấu bị form ghi đè hoặc chưa commit; thử nhập lại một lần.");
+        okDc = await setNumericByPaste(el, discount);
+        await sleep(900);
+        el = findDiscountInput();
+        actual = el ? readNumber(el.value) : NaN;
+        log(`Xác minh chiết khấu lần 2: mong muốn=${discount}, thực tế=${actual}`);
+      }
+
+      const verified = actual === Number(discount);
+      log(`-> set chiết khấu ${discount}: thao tác=${okDc}, xác minh cuối=${verified}`);
+      if (verified) done.push("chiết khấu");
+      else log("CẢNH BÁO: ô Chiết khấu không giữ được giá trị mong muốn; cần kiểm tra form trước khi lưu.");
     }
   }
 
