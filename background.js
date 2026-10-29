@@ -303,7 +303,9 @@ function parseOrderConfirmation(text) {
     .replace(/Tổng\s*:/i, "\nTổng:")
     .replace(/Hình thức thanh toán\s*:/i, "\nHình thức thanh toán:")
     .replace(/Theo dõi vận chuyển\s*:/i, "\nTheo dõi vận chuyển:")
-    .replace(/Ghi chú\s*:/i, "\nGhi chú:");
+    .replace(/Ghi chú\s*:/i, "\nGhi chú:")
+    .replace(/Người nhận\s*:/i, "\nTên người nhận:")
+    .replace(/Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -314,7 +316,7 @@ function parseOrderConfirmation(text) {
 
   const STOPS = ["Mã đơn hàng:", "Tên người nhận:", "Số điện thoại:", "Địa chỉ:",
     "Sản phẩm:", "Phí vận chuyển:", "Chiết khấu:", "Tổng:",
-    "Hình thức thanh toán:", "Theo dõi vận chuyển:", "Ghi chú:"];
+    "Hình thức thanh toán:", "Vận chuyển:", "Theo dõi vận chuyển:", "Ghi chú:"];
 
   const name = grab("Tên người nhận:", STOPS);
   const phoneRaw = grab("Số điện thoại:", STOPS);
@@ -870,26 +872,33 @@ async function runFill(tabId, options = {}) {
   });
 
   const msgCount = Math.min(parseInt(cfg.msgCount, 10) || 3, 10);
-  blog("Thu thập chat, msgCount =", msgCount);
-  const collected = await collectFromFrames(tabId, msgCount);
+  let collected = { messages: [], orderConfirmation: "" };
+  let extracted = null;
 
-  if (!collected.messages.length && !collected.orderConfirmation) {
-    throw new Error("Không đọc được tin nhắn chat nào. Hãy mở màn hình có khung chat.");
-  }
-
-  // Chặn trước khi gọi AI hoặc mở/điền form.
-  if (hasRecentStopPhrase(collected.messages, msgCount)) {
-    throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
+  // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
+  if (options.orderText) {
+    blog("Manual test: parse nội dung đơn được dán.");
+    extracted = parseOrderConfirmation(options.orderText);
+    if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
+    extracted._source = "manual-test";
+  } else {
+    blog("Thu thập chat, msgCount =", msgCount);
+    collected = await collectFromFrames(tabId, msgCount);
+    if (!collected.messages.length && !collected.orderConfirmation) {
+      throw new Error("Không đọc được tin nhắn chat nào. Hãy mở màn hình có khung chat.");
+    }
+    // Chặn trước khi gọi AI hoặc mở/điền form.
+    if (hasRecentStopPhrase(collected.messages, msgCount)) {
+      throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
+    }
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
   // map tên sản phẩm, tránh nhiễu bởi cú pháp nội bộ.
   const catalogRaw = (cfg.catalog && cfg.catalog.trim()) ? cfg.catalog : DEFAULT_CATALOG;
   const catalogForAI = parseCatalog(catalogRaw).map((c) => c.name).join("\n");
-  let extracted;
-
   // NHÁNH A: có khối "XÁC NHẬN ĐƠN HÀNG" -> parse bằng JS (nhanh, chính xác, miễn phí).
-  if (collected.orderConfirmation) {
+  if (!extracted && collected.orderConfirmation) {
     blog("NHÁNH A: tìm thấy khối xác nhận đơn -> parse bằng JS.");
     blog("DIAG orderConfirmation RAW =", JSON.stringify(collected.orderConfirmation));
     extracted = parseOrderConfirmation(collected.orderConfirmation);
@@ -1090,6 +1099,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     runFill(msg.tabId)
       .then((r) => sendResponse(r))
       .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
+  if (msg?.type === "RUN_TEST_ORDER") {
+    (async () => {
+      const tabs = await chrome.tabs.query({ url: "https://vpage.nhanh.vn/*" });
+      const tab = tabs.find((t) => t.url && /conversation/i.test(t.url)) || tabs[0];
+      if (!tab?.id) throw new Error("Hãy mở và đăng nhập Vpage trước, sau đó bấm test lại.");
+      return await runFill(tab.id, { mode: "test", orderText: msg.orderText });
+    })().then((r) => sendResponse(r)).catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   }
   if (msg?.type === "CHECK_ACCOUNT") {
