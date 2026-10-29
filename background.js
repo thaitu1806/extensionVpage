@@ -696,11 +696,20 @@ function mapProductsToCatalog(products, catalogList, preserveExtractedPrices = f
           && catalogPrice > 0 && extractedPrice > 0 && extractedPrice !== catalogPrice) {
         blog(`DIAG giá "${best.name}": dùng GIÁ CATALOG ${catalogPrice} (bỏ giá trích ${extractedPrice}).`);
       }
+      // Giữ riêng giá ghi rõ trong nội dung đơn nếu khác catalog.
+      // Giá thường vẫn dùng catalog; content script chỉ ghi đè ô Giá khi overridePrice > 0.
+      const overridePrice = extractedPrice > 0 && catalogPrice > 0 && extractedPrice !== catalogPrice
+        ? extractedPrice
+        : 0;
+      if (overridePrice) {
+        blog(`DIAG giá khác catalog cho "${best.name}": catalog=${catalogPrice}, giá đơn=${overridePrice}; sẽ cập nhật ô Giá sau khi thêm sản phẩm.`);
+      }
       return {
         quantity: p.quantity || 1,
         name: best.name,                       // tên NGUYÊN VĂN trong CATALOG
         search: best.search || best.name,      // TỪ KHÓA tìm ra duy nhất sản phẩm
-        price
+        price,
+        overridePrice
       };
     }
     return p; // không map được -> giữ nguyên
