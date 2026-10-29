@@ -213,5 +213,32 @@ $("pullTest").addEventListener("click", () => {
   }).catch((e) => { st.textContent = "Kiểm tra thất bại: " + e.message; st.className = "status err"; });
 });
 
+$("manualOrderTest").addEventListener("click", () => {
+  const status = $("manualOrderStatus");
+  const orderText = $("manualOrderText").value.trim();
+  status.textContent = "";
+  status.className = "status";
+  if (!orderText) {
+    status.textContent = "Hãy dán nội dung đơn hàng trước.";
+    status.className = "status err";
+    return;
+  }
+  status.textContent = "Đang phân tích và điền thử... Hãy chờ, không đóng trang.";
+  chrome.runtime.sendMessage({ type: "RUN_TEST_ORDER", orderText }, (res) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = "Lỗi kết nối extension: " + chrome.runtime.lastError.message;
+      status.className = "status err";
+      return;
+    }
+    if (res && res.ok) {
+      status.textContent = "Đã chạy test. " + (res.summary || "") + " Form không được tự lưu; hãy kiểm tra tab Vpage.";
+      status.className = "status ok";
+    } else {
+      status.textContent = "Test thất bại: " + ((res && res.error) || "Không rõ lỗi");
+      status.className = "status err";
+    }
+  });
+});
+
 document.addEventListener("DOMContentLoaded", load);
 $("save").addEventListener("click", save);
