@@ -1098,6 +1098,7 @@ async function runFill(tabId, options = {}) {
     filled: true,
     reviewRequired: !!fillRes.reviewRequired,
     submitted: !!fillRes.submitted,
+    saveFailed: !!fillRes.saveFailed,
     summary: summary + "\n" + (fillRes.info || "")
   };
 }
@@ -1668,6 +1669,7 @@ async function fillOrderByPhone(phone) {
   blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới.`);
   const tab = await chrome.tabs.create({ url: targetUrl, active: activateImmediately });
   let keepTabForReview = false;
+  let res;
   try {
     await waitTabComplete(tab.id, 20000);
     if (mode === "switch") {
@@ -1681,12 +1683,23 @@ async function fillOrderByPhone(phone) {
     await new Promise((r) => setTimeout(r, 3000));
 
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
-    const res = await runFill(tab.id, { mode: "webhook" });
+    res = await runFill(tab.id, { mode: "webhook" });
     keepTabForReview = !!res?.reviewRequired || res?.ok === false || res?.filled === false;
     blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
     return res;
   } finally {
-    if (keepTabForReview) {
+    // Nếu webhook đã bật tự lưu nhưng không bấm được nút Lưu, cho form 15 giây rồi tự đóng tab.
+    // Luồng lưu thành công vẫn đóng tab ngay như trước; chế độ review vẫn giữ tab.
+    if (typeof res !== "undefined" && res?.saveFailed) {
+      blog(`AutoFill webhook: không lưu được; giữ tab #${tab.id} thêm 15 giây trước khi tự đóng.`);
+      await new Promise((r) => setTimeout(r, 15000));
+      try {
+        await chrome.tabs.remove(tab.id);
+        blog(`AutoFill webhook: đã tự đóng tab lỗi #${tab.id} sau 15 giây.`);
+      } catch (e) {
+        blog(`AutoFill webhook: không đóng được tab lỗi #${tab.id}: ${e.message}`);
+      }
+    } else if (keepTabForReview) {
       blog(`AutoFill webhook: giữ tab riêng #${tab.id} mở để kiểm tra (chế độ chưa tự lưu).`);
     } else {
       try {
