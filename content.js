@@ -505,16 +505,20 @@ async function fillForm(data) {
   }
 
   // Webhook lấy trạng thái từ cấu hình; mặc định "Mới" để kiểm thử an toàn.
-  if (data.mode === "webhook") {
+  if (data.mode === "webhook" || data.mode === "test") {
     const cfg = await chrome.storage.local.get({ autoOrderStatus: "Mới" });
-    const requestedStatus = cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới";
+    // Test thủ công luôn chọn "Mới", không bao giờ tự lưu.
+    const requestedStatus = data.mode === "test" ? "Mới" : (cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới");
     const okStatus = setOrderStatus(requestedStatus);
-    log(`-> webhook: chọn trạng thái '${requestedStatus}' = ${okStatus}`);
+    log(`-> ${data.mode}: chọn trạng thái '${requestedStatus}' = ${okStatus}`);
     if (okStatus) done.push(`trạng thái ${requestedStatus}`);
-    if (!okStatus) throw new Error(`Webhook: không chọn được trạng thái '${requestedStatus}'; không lưu đơn.`);
+    if (!okStatus) throw new Error(`${data.mode}: không chọn được trạng thái '${requestedStatus}'; không lưu đơn.`);
 
     const cfgSubmit = await chrome.storage.local.get({ autoSubmitOrder: false });
-    if (cfgSubmit.autoSubmitOrder) {
+    if (data.mode === "test") {
+      log("Manual test: đã điền form nhưng KHÔNG bấm Lưu.");
+      done.push("test — chưa lưu");
+    } else if (cfgSubmit.autoSubmitOrder) {
       const saved = await clickSaveButton(45000);
       if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
       done.push("lưu");
