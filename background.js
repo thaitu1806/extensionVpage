@@ -191,6 +191,12 @@ function parseProductLines(block) {
     let rest = (m[2] || "").trim();
     if (!rest) continue;
 
+    // Phòng trường hợp nội dung dán là một dòng dài: cắt phần sản phẩm ngay khi
+    // gặp nhãn trường đơn tiếp theo, để giá "(60,000)" không bị xem là nằm giữa
+    // chuỗi dài và bị regex giá ở cuối bỏ sót.
+    rest = rest.replace(/\\s+(?=(?:Phí vận chuyển|Chiết khấu|Tổng(?: thanh toán)?|Ghi chú|Vận chuyển|Hình thức vận chuyển|Người nhận|Tên người nhận|Số điện thoại|Địa chỉ)\\s*:)[\\s\\S]*$/i, "").trim();
+    if (!rest) continue;
+
     // Nếu có " - <số tiền>" (format cũ) thì tách ra làm giá. Cho phép giá đứng
     // ở CUỐI phần tên HOẶC ngay trước dấu phân cách sản phẩm kế (; ,) để xử lý
     // nhiều sản phẩm có giá nằm trên cùng một dòng.
