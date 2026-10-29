@@ -445,7 +445,9 @@ async function fillForm(data) {
     const el = findAddressDetailInput();
     log("Tìm ô 'Địa chỉ chi tiết':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
-      const incomingAddress = String(data.address).trim();
+      const incomingAddress = String(data.address)
+        .replace(/,\\s*(?:vi[eệ]t\\s*nam)\\s*$/iu, "")
+        .trim();
       log(`-> GHI ĐÈ địa chỉ chi tiết: giá trị cũ="${el.value || ""}", giá trị mới="${incomingAddress}".`);
       setNativeValue(el, incomingAddress);
       fireFocusBlur(el);
