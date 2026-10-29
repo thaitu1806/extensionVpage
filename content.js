@@ -1513,6 +1513,15 @@ async function addProducts(products) {
           const okQty = await increaseQtyByReAdd(input, fullName, qty, p.search);
           log(`-> tăng SL bằng cách thêm lại = ${okQty}`);
         }
+
+        // Chỉ ghi đè giá khi nội dung đơn có giá cụ thể khác giá catalog.
+        // Thực hiện sau khi thêm/gộp đủ số lượng để tránh giá catalog ghi đè lại.
+        const overridePrice = Number(p.overridePrice) || 0;
+        if (overridePrice > 0) {
+          await sleep(300);
+          const okPrice = await setPriceForProduct(fullName, overridePrice);
+          log(`-> cập nhật giá riêng ${overridePrice} cho "${fullName}" = ${okPrice}`);
+        }
         await sleep(300);
       } else {
         log("-> KHÔNG thêm được sản phẩm vào bảng.");
@@ -1946,6 +1955,35 @@ function getRowQtyInput(row) {
 
   // Fallback cuối: input đầu tiên của dòng.
   return inputs[0] || null;
+}
+
+// Set giá bán cho đúng dòng sản phẩm. Chỉ gọi khi giá trích từ đơn khác catalog.
+async function setPriceForProduct(productName, price) {
+  const row = findProductRow(productName);
+  if (!row) {
+    log(`setPriceForProduct: không tìm thấy dòng "${productName}".`);
+    return false;
+  }
+
+  const tds = Array.from(row.children).filter((el) => el.tagName === "TD");
+  const priceInput = tds[2]?.querySelector("input[autonumeric], input[appautonumericwrapper], input.text-end");
+  if (!priceInput) {
+    log(`setPriceForProduct: không tìm thấy ô Giá trong dòng "${productName}".`);
+    return false;
+  }
+
+  const currentPrice = readNumber(priceInput.value);
+  if (currentPrice === Number(price)) {
+    log(`setPriceForProduct: giá đã đúng ${price}.`);
+    return true;
+  }
+
+  log(`setPriceForProduct: "${productName}" giá hiện tại=${priceInput.value}, giá cần đặt=${price}`);
+  const ok = await setNumericByPaste(priceInput, price);
+  await sleep(300);
+  const verified = readNumber(priceInput.value) === Number(price);
+  log(`setPriceForProduct: kết quả set=${ok}, xác minh=${verified}, giá cuối="${priceInput.value}"`);
+  return ok && verified;
 }
 
 // Set số lượng cho đúng dòng chứa sản phẩm có tên khớp; nếu không tìm thấy thì dùng dòng cuối.
