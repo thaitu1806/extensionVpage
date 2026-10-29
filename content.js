@@ -1679,7 +1679,8 @@ async function chooseSuggestion(input, targetName, rowsBefore) {
   // Cách 1: click phần tử con của gợi ý khớp nhất.
   const best = bestSuggestionEl(targetName);
   if (best && (!suggestionMatchesVariant(targetName, suggestionName(best))
-      || !suggestionMatchesRiceType(targetName, suggestionName(best)))) {
+      || !suggestionMatchesRiceType(targetName, suggestionName(best))
+      || !suggestionMatchesProductIdentity(targetName, suggestionName(best)))) {
     log(`chooseSuggestion: từ chối gợi ý không khớp loại/vị "${suggestionName(best)}" cho "${targetName}"`);
     return false;
   }
@@ -1711,7 +1712,8 @@ async function chooseSuggestion(input, targetName, rowsBefore) {
   if (items.length === 1) {
     if (suggestionMatchesType(targetName, suggestionName(items[0]))
         && suggestionMatchesVariant(targetName, suggestionName(items[0]))
-        && suggestionMatchesRiceType(targetName, suggestionName(items[0]))) {
+        && suggestionMatchesRiceType(targetName, suggestionName(items[0]))
+        && suggestionMatchesProductIdentity(targetName, suggestionName(items[0]))) {
       log("chooseSuggestion[single]: click mục duy nhất (cùng loại).");
       simulateClick(items[0]);
       if (await waitRowAdded(rowsBefore, 1800)) return true;
@@ -1755,6 +1757,17 @@ function suggestionMatchesRiceType(targetName, suggestionText) {
   const targetType = riceBaseType(targetName);
   if (!targetType) return true;
   return riceBaseType(suggestionText) === targetType;
+}
+
+// Kiểm tra gợi ý có cùng danh tính sản phẩm, tránh trường hợp chỉ có một gợi ý
+// nhưng đó là sản phẩm hoàn toàn khác (ví dụ tìm "Rong Biển Mix" lại chọn cơm cháy).
+function suggestionMatchesProductIdentity(targetName, suggestionText) {
+  const ignored = new Set(["com", "chay", "cay", "vua", "sieu", "khong", "it", "dai"]);
+  const targetTokens = normalize(targetName).split(" ")
+    .filter((w) => w.length >= 2 && !ignored.has(w) && !/^\\d+$/.test(w));
+  if (!targetTokens.length) return true;
+  const suggestionTokens = new Set(normalize(suggestionText).split(" "));
+  return targetTokens.some((w) => suggestionTokens.has(w));
 }
 
 // Kiểm tra mục gợi ý có CÙNG LOẠI (marker kích cỡ "đại"/"siêu đại") với tên
@@ -1803,7 +1816,8 @@ function bestSuggestionIndex(targetName) {
     const itText = normalize(suggestion);
     // Không cho phép chọn Gạo Thường thay Gạo Lứt (hoặc ngược lại).
     if (!suggestionMatchesRiceType(targetName, suggestion)
-        || !suggestionMatchesVariant(targetName, suggestion)) {
+        || !suggestionMatchesVariant(targetName, suggestion)
+        || !suggestionMatchesProductIdentity(targetName, suggestion)) {
       return;
     }
     let score = 0;
