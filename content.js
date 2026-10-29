@@ -561,7 +561,16 @@ async function fillForm(data) {
       done.push("test — chưa lưu");
     } else if (cfgSubmit.autoSubmitOrder) {
       const saved = await clickSaveButton(45000);
-      if (!saved) throw new Error("Webhook: không tìm thấy nút Lưu; đơn chưa được lưu.");
+      if (!saved) {
+        log("Webhook: không bấm được nút Lưu; sẽ báo background tự đóng tab sau 15 giây.");
+        return {
+          filled: true,
+          info: "Đã điền form nhưng không bấm được nút Lưu; tab sẽ tự đóng sau 15 giây.",
+          reviewRequired: false,
+          submitted: false,
+          saveFailed: true
+        };
+      }
       done.push("lưu");
       // clickSaveButton đã chờ 3 giây sau khi click Lưu trước khi cho phép đóng tab.    } else {
       log("Webhook: chế độ kiểm thử — đã điền form nhưng KHÔNG bấm Lưu; giữ tab mở để kiểm tra.");
