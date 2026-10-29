@@ -141,6 +141,14 @@
     <label><input type="checkbox" id="autoSubmitOrder" style="width:auto;margin-right:6px;" />Tự động bấm Lưu/gửi đơn sau khi điền (chỉ bật khi đã kiểm thử ổn)</label>
     <div class="hint">Khi tắt: extension chỉ điền form để bạn kiểm tra, không lưu đơn và giữ tab đơn hàng mở. Khi bật: extension tự bấm Lưu và đóng tab sau 3 giây.</div>
 
+    <label for="orderTabMode">Cách mở tab khi tự động lên đơn</label>
+    <select id="orderTabMode">
+      <option value="default">1. Default — hành vi hiện tại</option>
+      <option value="background">2. Chạy nền hoàn toàn — không chuyển tab</option>
+      <option value="switch">3. Tự chuyển sang tab Nhanh.vn</option>
+    </select>
+    <div class="hint">Đơn vẫn được mở trong tab mới. Chế độ chạy nền sẽ tạo tab đơn ở trạng thái không active để bạn tiếp tục làm việc ở tab khác; một số thao tác trên trang có thể bị Chrome hạn chế khi tab nền, nên cần kiểm thử thực tế.</div>
+
     <label for="autoOrderStatus">Trạng thái đơn khi lên đơn tự động</label>
     <select id="autoOrderStatus">
       <option value="Mới">Mới (mặc định — dùng khi kiểm thử)</option>
