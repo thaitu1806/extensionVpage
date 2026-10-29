@@ -428,12 +428,19 @@ async function fillForm(data) {
       log(`-> địa chỉ hành chính đã khớp khách cung cấp: "${currentRegion}", BỎ QUA.`);
     } else {
       log(`-> địa chỉ hành chính khác dữ liệu khách: hiện tại="${currentRegion}", mới="${data.addressRegion}" -> chọn lại.`);
-      const okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-      const verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-      const verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-      log(`Điền địa chỉ hành chính: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      let okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+      let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+      let verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+      log(`Điền địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      if (!verified) {
+        log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
+        okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+        verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+        log(`Điền địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      }
       if (verified) done.push("tỉnh/xã");
-      else log("CẢNH BÁO: địa chỉ hành chính sau khi chọn vẫn chưa khớp địa chỉ khách; cần kiểm tra trước khi lưu.");
+      else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách. Khách cung cấp="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
     }
   }
 
