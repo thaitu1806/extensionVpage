@@ -1079,9 +1079,24 @@ async function runFill(tabId, options = {}) {
   ].filter(Boolean).join("\n");
 
   if (!fillRes.filled) {
-    return { ok: true, summary: summary + "\n\n(Đã trích nhưng chưa điền được form: " + (fillRes.info || "") + ")" };
+    const info = fillRes.info || "Không điền được form.";
+    return {
+      ok: false,
+      filled: false,
+      error: info,
+      reviewRequired: mode === "webhook",
+      summary: summary + "\n\n(Đã trích nhưng chưa điền được form: " + info + ")"
+    };
   }
-  return { ok: true, summary: summary + "\n" + (fillRes.info || "") };
+  // Giữ nguyên kết quả từ iframe. fillOrderByPhone cần reviewRequired để không đóng
+  // tab khi webhook chỉ điền form mà chưa được phép tự lưu.
+  return {
+    ok: true,
+    filled: true,
+    reviewRequired: !!fillRes.reviewRequired,
+    submitted: !!fillRes.submitted,
+    summary: summary + "\n" + (fillRes.info || "")
+  };
 }
 
 // Click chuột THẬT qua chrome.debugger (isTrusted=true) tại tọa độ (x,y) viewport tab.
@@ -1642,8 +1657,8 @@ async function fillOrderByPhone(phone) {
 
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
     const res = await runFill(tab.id, { mode: "webhook" });
-    keepTabForReview = !!res?.reviewRequired;
-    blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 300)}`);
+    keepTabForReview = !!res?.reviewRequired || res?.ok === false || res?.filled === false;
+    blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
     return res;
   } finally {
     if (keepTabForReview) {
@@ -1718,9 +1733,14 @@ async function processPushedCommand(cmd) {
         blog(`Push: nhận lệnh ${cmd.id} cho ${cmd.phone}.`);
         try {
           const result = await fillOrderByPhone(cmd.phone);
-          const message = result?.error
-            ? "⚠️ Đã chạy lệnh nhưng có lỗi: " + String(result.error).slice(0, 500)
-            : "✅ Extension đã xử lý lệnh lên đơn cho SĐT " + cmd.phone + ". Hãy kiểm tra tab Vpage nếu cần.";
+          const failed = result?.ok === false || result?.filled === false || !!result?.error;
+          const message = failed
+            ? "⚠️ Lệnh lên đơn chưa hoàn tất cho " + cmd.phone + ": " + String(result?.error || result?.summary || "Không điền được form.").slice(0, 500) + " Tab Vpage được giữ lại để kiểm tra."
+            : result?.submitted
+              ? "✅ Đã điền và gửi đơn cho SĐT " + cmd.phone + "."
+              : result?.reviewRequired
+                ? "📝 Đã điền form cho SĐT " + cmd.phone + " nhưng CHƯA lưu. Tab Vpage được giữ lại để kiểm tra."
+                : "✅ Extension đã xử lý lệnh lên đơn cho SĐT " + cmd.phone + ". Hãy kiểm tra tab Vpage nếu cần.";
           await reportRemoteStatus(cmd.chatId, null, message);
         } catch (e) {
           blog(`Push: lên đơn lỗi cho ${cmd.phone}: ${e.message}`);
