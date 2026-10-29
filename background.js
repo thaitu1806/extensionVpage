@@ -1046,7 +1046,7 @@ async function runFill(tabId, options = {}) {
   await detachDebugger(tabId);
 
   const summary = [
-    "Nguồn: " + (extracted._source === "confirmation" ? "Khối xác nhận đơn" : "DeepSeek AI"),
+    "Nguồn: " + (extracted._source === "manual-test" ? "Test thủ công" : extracted._source === "confirmation" ? "Khối xác nhận đơn" : "DeepSeek AI"),
     extracted.name ? "Tên: " + extracted.name : null,
     extracted.phone ? "SĐT: " + extracted.phone : null,
     extracted.address ? "Địa chỉ: " + extracted.address : null,
