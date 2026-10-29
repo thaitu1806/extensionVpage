@@ -473,9 +473,10 @@ async function fillForm(data) {
   const discount = computeDiscount(data);
   {
     const productsTotal = (data.products || []).reduce(
-      (s, p) => s + (Number(p.price) || 0) * (Number(p.quantity) || 1), 0);
-    log(`Chiết khấu: tổngHàng=${productsTotal} - COD=${Number(data.totalCOD) || 0}`
-      + ` - ship=${Number(data.shippingFee) || 0} = ${discount}`
+      (s, p) => s + ((Number(p.overridePrice) > 0 ? Number(p.overridePrice) : (Number(p.price) || 0))
+        * (Number(p.quantity) || 1)), 0);
+    log(`Chiết khấu: tổngHàngTheoGiáChốt=${productsTotal} + ship=${Number(data.shippingFee) || 0}`
+      + ` - COD=${Number(data.totalCOD) || 0} = ${discount}`
       + (Number(data.discount) ? ` (discount gốc=${data.discount})` : ""));
   }
   if (discount > 0) {
@@ -551,22 +552,25 @@ async function fillForm(data) {
 // không đủ dữ liệu để tự tính (thiếu tổng tiền hàng hoặc thiếu COD).
 function computeDiscount(data) {
   const productsTotal = (data.products || []).reduce((s, p) => {
-    const price = Number(p.price) || 0;
+    // overridePrice là giá chốt cần ghi đè lên catalog khi hai giá khác nhau.
+    const price = Number(p.overridePrice) > 0
+      ? Number(p.overridePrice)
+      : (Number(p.price) || 0);
     const qty = Number(p.quantity) || 1;
-    // price trong khối xác nhận là ĐƠN GIÁ; nhân số lượng.
     return s + price * qty;
   }, 0);
 
   const ship = Number(data.shippingFee) || 0;
   const cod = Number(data.totalCOD) || 0;
 
-  // Chỉ tin công thức khi có đủ tổng tiền hàng VÀ COD (> 0).
+  // totalCOD trong khối xác nhận là tổng cuối đã gồm phí ship:
+  // chiết khấu = tổng hàng theo giá chốt + phí ship - COD.
   if (productsTotal > 0 && cod > 0) {
-    const dc = productsTotal - cod - ship;
+    const dc = productsTotal + ship - cod;
     return dc > 0 ? dc : 0;
   }
 
-  // Dự phòng: dùng discount đã trích được (nếu hợp lệ).
+  // Dự phòng khi thiếu tổng hàng hoặc COD.
   const parsed = Number(data.discount) || 0;
   return parsed > 0 ? parsed : 0;
 }
