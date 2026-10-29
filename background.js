@@ -194,15 +194,16 @@ function parseProductLines(block) {
     // Phòng trường hợp nội dung dán là một dòng dài: cắt phần sản phẩm ngay khi
     // gặp nhãn trường đơn tiếp theo, để giá "(60,000)" không bị xem là nằm giữa
     rest = rest.replace(/\s+(?=(?:Phí vận chuyển|Chiết khấu|Tổng(?: thanh toán)?|Ghi chú|Vận chuyển|Hình thức vận chuyển|Người nhận|Tên người nhận|Số điện thoại|Địa chỉ)\s*:)[\s\S]*$/i, "").trim();
-    rest = rest.replace(/\\s+(?=(?:Phí vận chuyển|Chiết khấu|Tổng(?: thanh toán)?|Ghi chú|Vận chuyển|Hình thức vận chuyển|Người nhận|Tên người nhận|Số điện thoại|Địa chỉ)\\s*:)[\\s\\S]*$/i, "").trim();
     if (!rest) continue;
 
     // Nếu có " - <số tiền>" (format cũ) thì tách ra làm giá. Cho phép giá đứng
     // ở CUỐI phần tên HOẶC ngay trước dấu phân cách sản phẩm kế (; ,) để xử lý
     // nhiều sản phẩm có giá nằm trên cùng một dòng.
     let price = 0;
-    const priceM = rest.match(/\s*\(\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*\)\s*[;,]?\s*$/)
-      || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*[;,]?\s*$/);
+    // Ưu tiên bắt giá ghi trong ngoặc ở bất kỳ vị trí nào của phần sản phẩm,
+    // phòng trường hợp văn bản dán có ký tự/dấu câu dư ở cuối.
+    const priceM = rest.match(/\(\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*\)/)
+      || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})(?=\s|[;,]|$)/);
     if (priceM) {
       price = toNumber(priceM[1]);
       rest = rest.slice(0, priceM.index).trim();
