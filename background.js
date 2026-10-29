@@ -1621,12 +1621,19 @@ async function fillOrderByPhone(phone) {
   // Luôn dùng tab riêng; chế độ background không lấy focus khỏi tab người dùng.
   const cfg = await chrome.storage.local.get({ orderTabMode: "default" });
   const mode = ["background", "switch"].includes(cfg.orderTabMode) ? cfg.orderTabMode : "default";
-  const activateTab = mode !== "background";
-  blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới ${activateTab ? "và chuyển focus" : "ở nền"}.`);
-  const tab = await chrome.tabs.create({ url: targetUrl, active: activateTab });
+  // Default: hành vi cũ (mở tab mới và chuyển focus ngay).
+  // Background: tạo tab không active để người dùng tiếp tục tab đang làm.
+  // Switch: cho tab đơn tải trước, sau đó mới chuyển focus sang Nhanh.vn.
+  const activateImmediately = mode === "default";
+  blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới.`);
+  const tab = await chrome.tabs.create({ url: targetUrl, active: activateImmediately });
   let keepTabForReview = false;
   try {
     await waitTabComplete(tab.id, 20000);
+    if (mode === "switch") {
+      await chrome.tabs.update(tab.id, { active: true });
+      blog(`AutoFill: tab đơn #${tab.id} đã tải xong; chuyển focus sang Nhanh.vn.`);
+    }
     await new Promise((r) => setTimeout(r, 4000));
 
     const opened = await openFirstConversation(tab.id, phone);
