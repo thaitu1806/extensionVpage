@@ -1678,8 +1678,9 @@ async function waitRowAdded(baseline, timeout = 2500) {
 async function chooseSuggestion(input, targetName, rowsBefore) {
   // Cách 1: click phần tử con của gợi ý khớp nhất.
   const best = bestSuggestionEl(targetName);
-  if (best && !suggestionMatchesVariant(targetName, suggestionName(best))) {
-    log(`chooseSuggestion: từ chối gợi ý lệch vị "${suggestionName(best)}" cho "${targetName}"`);
+  if (best && (!suggestionMatchesVariant(targetName, suggestionName(best))
+      || !suggestionMatchesRiceType(targetName, suggestionName(best)))) {
+    log(`chooseSuggestion: từ chối gợi ý không khớp loại/vị "${suggestionName(best)}" cho "${targetName}"`);
     return false;
   }
   if (best) {
@@ -1709,7 +1710,8 @@ async function chooseSuggestion(input, targetName, rowsBefore) {
   const items = getSuggestionItems();
   if (items.length === 1) {
     if (suggestionMatchesType(targetName, suggestionName(items[0]))
-        && suggestionMatchesVariant(targetName, suggestionName(items[0]))) {
+        && suggestionMatchesVariant(targetName, suggestionName(items[0]))
+        && suggestionMatchesRiceType(targetName, suggestionName(items[0]))) {
       log("chooseSuggestion[single]: click mục duy nhất (cùng loại).");
       simulateClick(items[0]);
       if (await waitRowAdded(rowsBefore, 1800)) return true;
@@ -1738,6 +1740,21 @@ function suggestionMatchesVariant(targetName, suggestionText) {
   const targetVariant = spiceVariant(targetName);
   if (!targetVariant) return true;
   return spiceVariant(suggestionText) === targetVariant;
+}
+
+// Phân biệt bắt buộc Gạo Lứt và Gạo Thường. Hai loại cùng có biến thể
+// "Cay Vừa" nên thuật toán chấm điểm theo từ khóa có thể chọn nhầm loại.
+function riceBaseType(name) {
+  const n = normalize(name);
+  if (/\\bgao lut\\b/.test(n)) return "gao-lut";
+  if (/\\bgao thuong\\b/.test(n)) return "gao-thuong";
+  return "";
+}
+
+function suggestionMatchesRiceType(targetName, suggestionText) {
+  const targetType = riceBaseType(targetName);
+  if (!targetType) return true;
+  return riceBaseType(suggestionText) === targetType;
 }
 
 // Kiểm tra mục gợi ý có CÙNG LOẠI (marker kích cỡ "đại"/"siêu đại") với tên
@@ -1782,7 +1799,13 @@ function bestSuggestionIndex(targetName) {
 
   let bestIdx = 0, bestScore = -1;
   items.forEach((it, idx) => {
-    const itText = normalize(suggestionName(it));
+    const suggestion = suggestionName(it);
+    const itText = normalize(suggestion);
+    // Không cho phép chọn Gạo Thường thay Gạo Lứt (hoặc ngược lại).
+    if (!suggestionMatchesRiceType(targetName, suggestion)
+        || !suggestionMatchesVariant(targetName, suggestion)) {
+      return;
+    }
     let score = 0;
     for (const w of targetWords) if (w.length >= 2 && itText.includes(w)) score++;
     if (itText === target) score += 20;
