@@ -406,21 +406,34 @@ async function fillForm(data) {
   if (data.phone) {
     const el = findByPlaceholder("Điện thoại", "Số điện thoại", "SĐT");
     log("Tìm ô 'Điện thoại':", el ? "OK" : "KHÔNG THẤY");
-    if (el && hasValue(el)) {
-      log("-> ô 'Điện thoại' đã có giá trị, BỎ QUA.");
-    } else if (el) {
-      setNativeValue(el, String(data.phone)); fireFocusBlur(el); done.push("sđt");
+    if (el) {
+      const currentPhone = String(el.value || "").replace(/\D/g, "");
+      const incomingPhone = String(data.phone).replace(/\D/g, "");
+      if (currentPhone === incomingPhone) {
+        log("-> SĐT trên form đã khớp SĐT khách cung cấp, BỎ QUA.");
+      } else {
+        log(`-> SĐT trên form khác dữ liệu khách: hiện tại="${currentPhone}", mới="${incomingPhone}" -> cập nhật.`);
+        setNativeValue(el, incomingPhone);
+        fireFocusBlur(el);
+        done.push("sđt");
+      }
     }
   }
-  // Địa chỉ hành chính (Tỉnh/Huyện/Xã) - ô app-location-danymic, cần chọn từ gợi ý.
+  // Địa chỉ hành chính (Tỉnh/Huyện/Xã) - luôn so sánh lựa chọn đang hiển thị
+  // (thường nằm trong placeholder) với địa chỉ khách cung cấp; khác thì chọn lại.
   if (data.addressRegion) {
     const regionEl = findAddressRegionInput();
-    if (regionEl && hasValue(regionEl)) {
-      log("-> ô địa chỉ hành chính đã có giá trị, BỎ QUA.");
+    const currentRegion = getRegionDisplayText(regionEl);
+    if (regionEl && sameRegionSelection(currentRegion, data.addressRegion)) {
+      log(`-> địa chỉ hành chính đã khớp khách cung cấp: "${currentRegion}", BỎ QUA.`);
     } else {
+      log(`-> địa chỉ hành chính khác dữ liệu khách: hiện tại="${currentRegion}", mới="${data.addressRegion}" -> chọn lại.`);
       const okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-      log("Điền địa chỉ hành chính:", okRegion ? "OK" : "chưa chọn được");
-      if (okRegion) done.push("tỉnh/xã");
+      const verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+      const verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+      log(`Điền địa chỉ hành chính: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      if (verified) done.push("tỉnh/xã");
+      else log("CẢNH BÁO: địa chỉ hành chính sau khi chọn vẫn chưa khớp địa chỉ khách; cần kiểm tra trước khi lưu.");
     }
   }
 
@@ -976,6 +989,22 @@ function getRegionDisplayText(input) {
   // Vpage thường hiển thị địa giới đã chọn trong placeholder, còn value có thể rỗng.
   if (placeholder.includes(",")) return placeholder;
   return (input.value || placeholder).trim();
+}
+
+ // So sánh địa giới đã chọn với địa chỉ khách cung cấp. Bỏ tiền tố loại địa giới
+ // và chuẩn hóa bí danh tỉnh/thành để "TP Thủ Đức" không lệch vì cách viết.
+function sameRegionSelection(currentText, targetText) {
+  const currentParts = String(currentText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const targetParts = String(targetText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!currentParts.length || !targetParts.length || currentParts.length !== targetParts.length) return false;
+  for (let i = 0; i < targetParts.length; i++) {
+    if (i === targetParts.length - 1) {
+      if (!sameProvinceName(currentParts[i], targetParts[i])) return false;
+    } else if (stripRegionType(currentParts[i]) !== stripRegionType(targetParts[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isIncompleteThreeLevelSelection(input, regionText) {
