@@ -397,10 +397,19 @@ async function fillForm(data) {
   if (data.name) {
     const el = findByPlaceholder("Tên");
     log("Tìm ô 'Tên':", el ? "OK" : "KHÔNG THẤY");
-    if (el && hasValue(el)) {
-      log("-> ô 'Tên' đã có giá trị, BỎ QUA.");
-    } else if (el) {
-      setNativeValue(el, data.name); fireFocusBlur(el); done.push("tên");
+    if (el) {
+      const currentName = String(el.value || "").replace(/\\s+/g, " ").trim();
+      const incomingName = String(data.name || "").replace(/\\s+/g, " ").trim();
+      // So sánh không phân biệt chữ hoa/thường và dấu tiếng Việt để tránh cập nhật
+      // lại khi tên thực chất giống nhau, chỉ khác cách viết.
+      if (normalize(currentName) === normalize(incomingName)) {
+        log("-> tên khách trên form đã khớp tên khách cung cấp, BỎ QUA.");
+      } else {
+        log(`-> tên khách trên form khác dữ liệu khách: hiện tại="${currentName}", mới="${incomingName}" -> cập nhật.`);
+        setNativeValue(el, incomingName);
+        fireFocusBlur(el);
+        done.push("tên");
+      }
     }
   }
   if (data.phone) {
