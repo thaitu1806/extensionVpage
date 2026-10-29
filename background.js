@@ -633,7 +633,7 @@ function productAttrs(norm) {
 
 // Ép mỗi sản phẩm về đúng tên NGUYÊN VĂN trong CATALOG bằng fuzzy match
 // CÓ TRỌNG SỐ cho các thuộc tính phân biệt (vị cay, dòng gạo, cỡ, rong biển).
-function mapProductsToCatalog(products, catalogList) {
+function mapProductsToCatalog(products, catalogList, preserveExtractedPrices = false) {
   if (!Array.isArray(products) || !catalogList.length) return products;
 
   const catNorm = catalogList.map((c) => {
@@ -689,10 +689,10 @@ function mapProductsToCatalog(products, catalogList) {
       const extractedPrice = Number(p.price) || 0;
       // Với đơn dán test thủ công, giá ghi ngay trong nội dung là giá cần kiểm thử.
       // Các luồng chat tự động vẫn ưu tiên giá CATALOG như trước.
-      const price = extracted._source === "manual-test" && extractedPrice > 0
+      const price = preserveExtractedPrices && extractedPrice > 0
         ? extractedPrice
         : (catalogPrice > 0 ? catalogPrice : extractedPrice);
-      if (!(extracted._source === "manual-test" && extractedPrice > 0)
+      if (!(preserveExtractedPrices && extractedPrice > 0)
           && catalogPrice > 0 && extractedPrice > 0 && extractedPrice !== catalogPrice) {
         blog(`DIAG giá "${best.name}": dùng GIÁ CATALOG ${catalogPrice} (bỏ giá trích ${extractedPrice}).`);
       }
@@ -967,7 +967,7 @@ async function runFill(tabId, options = {}) {
   const catalogList = parseCatalog(cfg.catalog && cfg.catalog.trim() ? cfg.catalog : DEFAULT_CATALOG);
   if (catalogList.length && Array.isArray(extracted.products)) {
     const before = extracted.products.map((p) => `${p.quantity}x ${p.name}`).join("; ");
-    extracted.products = mapProductsToCatalog(extracted.products, catalogList);
+    extracted.products = mapProductsToCatalog(extracted.products, catalogList, extracted._source === "manual-test");
     const after = extracted.products.map((p) => `${p.quantity}x ${p.name} (${p.price})`).join("; ");
     blog(`Map CATALOG: [${before}] -> [${after}]`);
   }
