@@ -2058,7 +2058,19 @@ async function setQuantityForProduct(productName, qty) {
 
   const rowName = textOf(row.querySelector(".productName"));
   log(`-> set SL=${qty} cho dòng "${rowName}". Giá trị hiện tại="${qtyInput.value}"`);
-  return await setNumericByPaste(qtyInput, qty);
+  const setOk = await setNumericByPaste(qtyInput, qty);
+  if (!setOk) return false;
+
+  // Quan trọng: VPage/Angular chỉ tính lại tổng hàng khi ô số lượng mất focus.
+  // Blur ngay sau khi nhập SL để model được commit trước khi nhập chiết khấu.
+  qtyInput.dispatchEvent(new Event("change", { bubbles: true }));
+  qtyInput.blur();
+  qtyInput.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  await sleep(700);
+
+  const finalQty = readNumber(qtyInput.value);
+  log(`-> đã out-focus ô SL; giá trị cuối="${qtyInput.value}", xác minh=${finalQty === Number(qty)}`);
+  return finalQty === Number(qty);
 }
 
 // Set giá trị cho ô numeric (chiết khấu/phí ship/số lượng) bằng PASTE,
