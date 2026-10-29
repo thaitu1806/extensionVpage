@@ -110,7 +110,7 @@ function removeObsoleteHcmDistricts(region) {
 }
 function cleanAddress(addr) {
   return String(addr || "")
-    .replace(/,\s*(?:vi[eệ]t\s*nam)\s*$/iu, "") // bỏ quốc gia ở cuối trước khi xác định cấp địa chỉ
+    .replace(/,\s*(?:vi[eệ]t\s*nam|vn)\s*$/iu, "") // bỏ quốc gia ở cuối trước khi xác định cấp địa chỉ
     .replace(/\s*,\s*,\s*/g, ", ") // bỏ dấu phẩy rỗng ", ,"
     .replace(/\s{2,}/g, " ")
     .replace(/^,|,$/g, "")
