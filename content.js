@@ -543,13 +543,11 @@ async function fillForm(data) {
   };
 }
 
-// Tính chiết khấu theo GIÁ TRỊ THỰC TẾ:
-//   chiết khấu = tổng tiền hàng (giá thực tế) - COD - phí ship.
-// Ví dụ: 3 túi x 79.000 = 237.000; COD = 219.000; ship = 0
-//        -> chiết khấu = 237.000 - 219.000 - 0 = 18.000.
-//
-// Công thức này là nguồn CHÍNH XÁC. data.discount chỉ dùng DỰ PHÒNG khi
-// không đủ dữ liệu để tự tính (thiếu tổng tiền hàng hoặc thiếu COD).
+// Tính chiết khấu theo giá chốt thực tế, kể cả khi khác giá catalog.
+// totalCOD là tổng cuối đã gồm phí ship:
+// chiết khấu = tổng tiền hàng theo giá chốt + phí ship - COD.
+// Nếu giá trích từ đơn khác catalog, dùng overridePrice (giá sẽ được cập nhật trên dòng sản phẩm).
+
 function computeDiscount(data) {
   const productsTotal = (data.products || []).reduce((s, p) => {
     // overridePrice là giá chốt cần ghi đè lên catalog khi hai giá khác nhau.
