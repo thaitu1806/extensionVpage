@@ -1618,8 +1618,12 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
 // Mở/điều hướng tab vpage tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
 async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
-  // Webhook luôn dùng tab riêng, không điều hướng tab người dùng đang mở.
-  const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+  // Luôn dùng tab riêng; chế độ background không lấy focus khỏi tab người dùng.
+  const cfg = await chrome.storage.local.get({ orderTabMode: "default" });
+  const mode = ["background", "switch"].includes(cfg.orderTabMode) ? cfg.orderTabMode : "default";
+  const activateTab = mode !== "background";
+  blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới ${activateTab ? "và chuyển focus" : "ở nền"}.`);
+  const tab = await chrome.tabs.create({ url: targetUrl, active: activateTab });
   let keepTabForReview = false;
   try {
     await waitTabComplete(tab.id, 20000);
