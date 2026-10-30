@@ -546,7 +546,7 @@ async function fillForm(data) {
   await sleep(4000);
 
   // Webhook lấy trạng thái từ cấu hình; mặc định "Mới" để kiểm thử an toàn.
-  if (data.mode === "webhook" || data.mode === "test") {
+  if (data.mode === "webhook" || data.mode === "webhook-precheck" || data.mode === "test") {
     const cfg = await chrome.storage.local.get({ autoOrderStatus: "Mới" });
     // Test thủ công luôn chọn "Mới", không bao giờ tự lưu.
     const requestedStatus = data.mode === "test" ? "Mới" : (cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới");
@@ -559,6 +559,9 @@ async function fillForm(data) {
     if (data.mode === "test") {
       log("Manual test: đã điền form nhưng KHÔNG bấm Lưu.");
       done.push("test — chưa lưu");
+    } else if (data.mode === "webhook-precheck") {
+      log("Auto-save guard: form đã điền, chưa bấm Lưu; chờ background xác minh hội thoại.");
+      done.push("chờ xác minh hội thoại — chưa lưu");
     } else if (cfgSubmit.autoSubmitOrder) {
       const saved = await clickSaveButton(45000);
       if (!saved) {
@@ -2276,6 +2279,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     fillForm(data)
       .then((r) => sendResponse(r))
       .catch((e) => sendResponse({ filled: false, info: "Lỗi điền: " + e.message }));
+    return true;
+  }
+  if (msg?.type === "SAVE_VERIFIED_ORDER") {
+    if (!isOrderFrame() || !hasOrderForm()) {
+      sendResponse({ saved: false, info: "Không phải frame form đơn hàng." });
+      return false;
+    }
+    clickSaveButton(45000).then((saved) => sendResponse({ saved }))
+      .catch((e) => sendResponse({ saved: false, info: e.message }));
     return true;
   }
 });
