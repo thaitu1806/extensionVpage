@@ -1118,7 +1118,7 @@ async function runFill(tabId, options = {}) {
       // Cửa sổ tin nhắn có thể đã trượt vì msgCount; khác tin cuối cũng là tin mới.
       return true;
     };
-    const normalizedText = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+    const normalizedText = (value) => String(value || "").replace(/\s+/g, " ").trim();
     const containsNewIdenticalTemplate = (messages, baseline, template) => {
       if (!template || !messages.length) return false;
       const lastBaseline = baseline[baseline.length - 1] || "";
