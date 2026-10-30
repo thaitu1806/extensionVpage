@@ -1325,6 +1325,116 @@ async function getRecentConversationMessages(tabId, lastN = 3) {
   return [];
 }
 
+ 
+// Phát hiện đúng TIN NHẮN MỚI NHẤT của shop báo giao hàng thất bại.
+// Tránh kích hoạt chỉ vì một tin cũ có chữ "Trân trọng".
+function isLatestUndeliveredMessage(message) {
+  if (!message || message.role !== "shop") return false;
+  const text = normalizeTrackingText(message.text || "");
+  return text.includes("chua giao duoc thanh cong")
+    || (text.includes("tran trong") && text.includes("ma van don"));
+}
+
+// Lấy link "Xem vận đơn" nằm ngay trong tin nhắn giao thất bại mới nhất.
+async function getLatestUndeliveredTrackingUrl(tabId) {
+  for (const frameId of await getFrameIds(tabId)) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        func: function () {
+          const items = Array.from(document.querySelectorAll(".c-msg-item"));
+          const item = items[items.length - 1];
+          if (!item) return { ok: false, reason: "không có tin nhắn" };
+          const bubble = item.querySelector(".c-msg");
+          if (!bubble) return { ok: false, reason: "không có nội dung tin mới nhất" };
+          const text = String(bubble.innerText || item.innerText || "")
+            .toLowerCase().replace(/đ/g, "d")
+            .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+            .replace(/\\s+/g, " ").trim();
+          const isTarget = text.includes("chua giao duoc thanh cong")
+            || (text.includes("tran trong") && text.includes("ma van don"));
+          if (!isTarget) return { ok: false, reason: "tin mới nhất không phải mẫu giao thất bại" };
+          const links = Array.from(item.querySelectorAll('a[href*="/tracking"]'));
+          const link = links.find((a) =>
+            String(a.innerText || a.textContent || "").toLowerCase().includes("xem van don")
+          ) || links[0];
+          return link ? { ok: true, url: link.href, text } : { ok: false, reason: "không có link Xem vận đơn trong tin mới nhất" };
+        }
+      });
+      const result = results?.[0]?.result;
+      if (result?.ok && result.url) return result;
+      if (result?.reason) blog("Undelivered follow-up: " + result.reason);
+    } catch (e) {
+      blog("Undelivered follow-up: lỗi lấy link vận đơn:", e.message);
+    }
+  }
+  return null;
+}
+
+// Đọc số điện thoại bưu tá từ trang tracking.
+async function getCourierPhone(trackingTabId, timeout = 15000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: trackingTabId, frameIds: [0] },
+        func: function () {
+          const links = Array.from(document.querySelectorAll('a[href^="tel:"]'));
+          const courier = links.find((a) => {
+            const parentText = String(a.closest(".text-center.mb-2")?.innerText || a.parentElement?.innerText || "");
+            return /bưu tá/i.test(parentText);
+          });
+          const raw = courier?.getAttribute("href")?.replace(/^tel:/i, "").trim()
+            || "";
+          return raw ? raw : "";
+        }
+      });
+      const phone = results?.[0]?.result;
+      if (phone) return phone;
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return "";
+}
+
+// Gửi tin nhắn vào ô trả lời của đúng hội thoại đang được quét.
+async function sendCourierPhoneMessage(tabId, message) {
+  for (const frameId of await getFrameIds(tabId)) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        func: async function (text) {
+          const areas = Array.from(document.querySelectorAll("textarea"))
+            .filter((el) => el.isConnected && el.getClientRects().length > 0 && !el.disabled);
+          const area = areas.find((el) => /trả lời từ|tra loi tu/i.test(el.placeholder || ""))
+            || areas.find((el) => /cdk-textarea-autosize/.test(el.className || "") && /trả lời|tra loi/i.test(el.placeholder || ""));
+          if (!area) return { ok: false, reason: "không tìm thấy ô Trả lời" };
+          area.focus();
+          const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+          if (setter) setter.call(area, text);
+          else area.value = text;
+          area.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+          area.dispatchEvent(new Event("change", { bubbles: true }));
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const opts = { bubbles: true, cancelable: true, key: "Enter", code: "Enter", keyCode: 13, which: 13 };
+          area.dispatchEvent(new KeyboardEvent("keydown", opts));
+          area.dispatchEvent(new KeyboardEvent("keypress", opts));
+          area.dispatchEvent(new KeyboardEvent("keyup", opts));
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          return { ok: true, cleared: !String(area.value || "").trim(), reason: "đã nhập tin và phát Enter" };
+        },
+        args: [message]
+      });
+      const result = results?.[0]?.result;
+      if (result?.ok) return result;
+      if (result?.reason) blog("Undelivered follow-up: " + result.reason);
+    } catch (e) {
+      blog("Undelivered follow-up: lỗi gửi tin:", e.message);
+    }
+  }
+  return { ok: false, reason: "không gửi được tin nhắn trong các frame của hội thoại" };
+}
+
 // Chỉ gửi cảnh báo dự phòng khi có tin KHÁCH chứa cả số điện thoại và dấu hiệu địa chỉ.
 // Không tự động lên đơn từ tin nhắn thô.
 function findCustomerContactMessage(messages) {
@@ -1452,8 +1562,59 @@ async function runScanCycle() {
     // 3) Kiểm tra 3 tin mới nhất trước mọi luồng Telegram/tự lên đơn.
     // Nếu gặp tracking hoặc tin hệ thống/CSKH của Bếp thì bỏ qua hội thoại này ngay.
     const recentMessages = await getRecentConversationMessages(tab.id, lastN);
+
+    // Xử lý riêng mẫu shop báo giao hàng thất bại trước quy tắc chặn "Trân trọng".
+    // Chỉ xét tin mới nhất; đọc số bưu tá từ trang tracking rồi nhắn lại trong đúng box.
+    const latestMessage = recentMessages[recentMessages.length - 1];
+    if (isLatestUndeliveredMessage(latestMessage)) {
+      const tracking = await getLatestUndeliveredTrackingUrl(tab.id);
+      if (!tracking?.url) {
+        blog(`Quét: "${conv.name}" - tin giao thất bại nhưng chưa lấy được link vận đơn; bỏ qua box này.`);
+        continue;
+      }
+
+      const trackingId = tracking.url.match(/[?&]id=([^&]+)/i)?.[1] || "";
+      const followupKey = `undelivered:${conv.id}:${decodeURIComponent(trackingId)}`;
+      const followupState = await chrome.storage.local.get({ trackingFollowupSent: {} });
+      const followupSent = followupState.trackingFollowupSent || {};
+      if (followupSent[followupKey]) {
+        blog(`Quét: "${conv.name}" - đã xử lý tin giao thất bại này trước đó, không gửi trùng.`);
+        continue;
+      }
+
+      let trackingTab = null;
+      let courierPhone = "";
+      try {
+        trackingTab = await chrome.tabs.create({ url: tracking.url, active: false });
+        await waitTabComplete(trackingTab.id, 20000);
+        courierPhone = await getCourierPhone(trackingTab.id, 15000);
+      } catch (e) {
+        blog(`Undelivered follow-up "${conv.name}": lỗi mở/đọc vận đơn: ${e.message}`);
+      } finally {
+        if (trackingTab?.id != null) {
+          try { await chrome.tabs.remove(trackingTab.id); } catch (_) {}
+        }
+      }
+
+      if (!courierPhone) {
+        blog(`Undelivered follow-up "${conv.name}": không tìm được số bưu tá; chưa gửi tin và sẽ thử lại ở lượt quét sau.`);
+        continue;
+      }
+
+      const customerMessage = `Dạ em gửi mình số điện thoại bạn bưu tá đang giao hàng cho mình ạ: ${courierPhone}. Chị kiểm tra giúp em xem có cuộc gọi nhỡ nào không, hoặc chị gọi lại cho bạn bưu tá để nhận hàng giúp em nhé ạ. 💖`;
+      const sendResult = await sendCourierPhoneMessage(tab.id, customerMessage);
+      if (sendResult?.ok) {
+        followupSent[followupKey] = Date.now();
+        await chrome.storage.local.set({ trackingFollowupSent: followupSent });
+        blog(`Undelivered follow-up "${conv.name}": đã phát tin nhắn số bưu tá ${courierPhone}; ô trả lời ${sendResult.cleared ? "đã được xóa" : "chưa xác nhận xóa"}.`);
+      } else {
+        blog(`Undelivered follow-up "${conv.name}": gửi tin nhắn thất bại (${sendResult?.reason || "không rõ lỗi"}); chưa đánh dấu hoàn tất.`);
+      }
+      continue;
+    }
+
     if (hasRecentStopPhrase(recentMessages, lastN)) {
-      blog(`Quét: "${conv.name}" - 3 tin mới nhất có "Theo dõi vận chuyển", "Thông báo từ Bếp" hoặc "Trân trọng"; dừng, không gửi Telegram và không tự lên đơn.`);
+      blog(`Quét: "${conv.name}" - tin gần nhất có "Theo dõi vận chuyển", "Thông báo từ Bếp" hoặc "Trân trọng"; dừng, không gửi Telegram và không tự lên đơn.`);
       continue;
     }
 
