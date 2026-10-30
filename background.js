@@ -1582,8 +1582,7 @@ async function runScanCycle() {
   for (const k of Object.keys(notified)) if (now - notified[k] > 86400000) delete notified[k];
 
   // Gom thông báo trong một lượt quét; chỉ gửi sau khi đã duyệt xong toàn bộ box.
-  const pendingNotifications = [];
-  let scanned = 0, sent = 0;
+  let scanned = 0;
   for (const conv of conversations) {
     scanned++;
     // 1) Click mở hội thoại (theo khóa ổn định).
@@ -1757,7 +1756,7 @@ async function runScanCycle() {
     if (maxActivityAt > 0) saveState.scanActivityCheckpoint = Math.max(checkpointAt, maxActivityAt);
   }
   await chrome.storage.local.set(saveState);
-  blog(`Quét xong: duyệt ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}), gửi ${sent} đơn mới.`);
+  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
 }
 
 function escapeHtml(s) {
