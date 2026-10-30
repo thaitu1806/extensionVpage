@@ -318,7 +318,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^$\{\}()|[\]\\\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", preferLastFields ? "ig" : "i");
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
     const matches = [...t.matchAll(re)];
     return matches.length
       ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
