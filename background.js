@@ -317,10 +317,13 @@ function parseOrderConfirmation(text) {
     .replace(/(?<!Phí )Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
-    const stop = stopLabels.map((l) => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\n(?:" + stop + ")|$)", "i");
-    const m = t.match(re);
-    return m ? m[1].trim() : "";
+    const stop = stopLabels.join("|");
+    // Nội dung test có thể chứa nhiều khối xác nhận đơn nối liền nhau.
+    // Lấy lần xuất hiện CUỐI của từng trường để ưu tiên đơn được cập nhật mới nhất,
+    // thay vì vô tình lấy sản phẩm/địa chỉ từ khối đơn cũ đầu tiên.
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
+    const matches = [...t.matchAll(re)];
+    return matches.length ? matches[matches.length - 1][1].trim() : "";
   };
 
   const STOPS = ["Mã đơn hàng:", "Tên người nhận:", "Số điện thoại:", "Địa chỉ:",
