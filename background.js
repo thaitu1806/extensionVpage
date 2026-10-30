@@ -915,7 +915,7 @@ async function fillForm(tabId, extracted, options = {}) {
 async function runFill(tabId, options = {}) {
   const mode = options.mode || "manual";
   const guardAttempt = Number(options._guardAttempt) || 1;
-  let initialChatSignature = "";
+  let initialOrderTemplate = "";
   blog("=== BẮT ĐẦU RUN_FILL cho tab", tabId, "mode =", mode, "===");
   const cfg = await chrome.storage.local.get({
     apiToken: "", model: "deepseek-chat", msgCount: "3", catalog: "",
@@ -942,7 +942,7 @@ async function runFill(tabId, options = {}) {
     if (hasRecentStopPhrase(collected.messages, msgCount)) {
       throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
     }
-    initialChatSignature = JSON.stringify({ messages: collected.messages, orderConfirmation: collected.orderConfirmation });
+    // Chỉ dùng khối template xác nhận/thông tin đơn hàng làm mốc; tin nhắn chat thông thường không kích hoạt điền lại form.\n    initialOrderTemplate = String(collected.orderConfirmation || "").trim();
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
@@ -1098,7 +1098,7 @@ async function runFill(tabId, options = {}) {
     const sleepGuard = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     blog(`Auto-save guard: kiểm tra hội thoại trước khi lưu (lượt ${guardAttempt}/3)...`);
     const latest = await collectFromFrames(tabId, msgCount);
-    const latestSignature = JSON.stringify({ messages: latest.messages, orderConfirmation: latest.orderConfirmation });
+    const latestOrderTemplate = String(latest.orderConfirmation || "").trim();
     if (!latest.messages.length && !latest.orderConfirmation) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
         summary: "Đã điền form nhưng không đọc xác minh được hội thoại mới nhất. Không tự lưu; giữ tab mở để kiểm tra." };
@@ -1124,7 +1124,7 @@ async function runFill(tabId, options = {}) {
       await sleepGuard(20000);
       return await runFill(tabId, { mode, _guardAttempt: guardAttempt + 1 });
     }
-    blog("Auto-save guard: hội thoại không thay đổi; yêu cầu frame form bấm Lưu.");
+    blog("Auto-save guard: không có template đơn hàng mới/thay đổi; yêu cầu frame form bấm Lưu.");
     const saveRes = await sendSaveToOrderFrame(tabId);
     if (!saveRes?.saved) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
