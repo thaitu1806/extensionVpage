@@ -1349,8 +1349,8 @@ async function getLatestUndeliveredTrackingUrl(tabId) {
           if (!bubble) return { ok: false, reason: "không có nội dung tin mới nhất" };
           const text = String(bubble.innerText || item.innerText || "")
             .toLowerCase().replace(/đ/g, "d")
-            .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-            .replace(/\\s+/g, " ").trim();
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/\s+/g, " ").trim();
           const isTarget = text.includes("chua giao duoc thanh cong")
             || (text.includes("tran trong") && text.includes("ma van don"));
           if (!isTarget) return { ok: false, reason: "tin mới nhất không phải mẫu giao thất bại" };
@@ -1420,8 +1420,14 @@ async function sendCourierPhoneMessage(tabId, message) {
           area.dispatchEvent(new KeyboardEvent("keydown", opts));
           area.dispatchEvent(new KeyboardEvent("keypress", opts));
           area.dispatchEvent(new KeyboardEvent("keyup", opts));
-          await new Promise((resolve) => setTimeout(resolve, 900));
-          return { ok: true, cleared: !String(area.value || "").trim(), reason: "đã nhập tin và phát Enter" };
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          const cleared = !String(area.value || "").trim();
+          return {
+            ok: cleared,
+            attempted: true,
+            cleared,
+            reason: cleared ? "đã phát Enter và ô trả lời đã được xóa" : "đã phát Enter nhưng ô trả lời chưa được xóa"
+          };
         },
         args: [message]
       });
