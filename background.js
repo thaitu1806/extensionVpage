@@ -924,6 +924,7 @@ async function runFill(tabId, options = {}) {
 
   const msgCount = Math.min(parseInt(cfg.msgCount, 10) || 3, 10);
   let collected = { messages: [], orderConfirmation: "" };
+  let initialMessages = [];
   let extracted = null;
 
   // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
@@ -942,7 +943,10 @@ async function runFill(tabId, options = {}) {
     if (hasRecentStopPhrase(collected.messages, msgCount)) {
       throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
     }
-    // Chỉ dùng khối template xác nhận/thông tin đơn hàng làm mốc; tin nhắn chat thông thường không kích hoạt điền lại form.\n    initialOrderTemplate = String(collected.orderConfirmation || "").trim();
+    // Lưu dấu mốc tin nhắn cuối và template đơn hàng tại thời điểm trích xuất ban đầu.
+    // Dấu mốc này giúp phân biệt tin nhắn mới với hội thoại đã đọc.
+    initialMessages = [...collected.messages];
+    initialOrderTemplate = String(collected.orderConfirmation || "").trim();
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
@@ -1091,15 +1095,49 @@ async function runFill(tabId, options = {}) {
   const fillMode = guardedAutoSave ? "webhook-precheck" : mode;
   const fillRes = await fillForm(tabId, extracted, { mode: fillMode });
 
-  // Auto-save webhook: trước khi lưu, chỉ kiểm tra khối template thông tin/xác nhận đơn hàng mới nhất.
-  // Tin nhắn chat thông thường thay đổi không làm điền lại form; chỉ template đơn hàng đổi mới kích hoạt retry.
-  // Tối đa 2 lần retry (tổng cộng 3 lượt điền form).
+  // Auto-save webhook: chỉ chờ 20 giây khi phát hiện tin nhắn mới.
+  // Sau thời gian chờ, chỉ template đơn hàng mới/thay đổi mới kích hoạt trích xuất và điền lại.
+  // Tin nhắn thông thường không làm chạy lại form. Tối đa 2 lần retry.
   if (guardedAutoSave && fillRes?.filled) {
     const sleepGuard = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    blog(`Auto-save guard: kiểm tra hội thoại trước khi lưu (lượt ${guardAttempt}/3)...`);
-    const latest = await collectFromFrames(tabId, msgCount);
-    const latestOrderTemplate = String(latest.orderConfirmation || "").trim();
-    if (!latest.messages.length && !latest.orderConfirmation) {
+    const getLatestConversation = async () => {
+      const result = await collectFromFrames(tabId, msgCount);
+      return {
+        messages: Array.isArray(result.messages) ? result.messages : [],
+        orderTemplate: String(result.orderConfirmation || "").trim()
+      };
+    };
+    const hasNewMessages = (messages, baseline) => {
+      if (!messages.length) return false;
+      const lastBaseline = baseline[baseline.length - 1] || "";
+      const lastCurrent = messages[messages.length - 1] || "";
+      if (lastCurrent === lastBaseline) return false;
+      // Nếu tin cuối cũ vẫn nằm trong cửa sổ hiện tại, xác nhận có tin nằm sau nó.
+      const baselineIndex = messages.lastIndexOf(lastBaseline);
+      if (lastBaseline && baselineIndex >= 0) return baselineIndex < messages.length - 1;
+      // Cửa sổ tin nhắn có thể đã trượt vì msgCount; khác tin cuối cũng là tin mới.
+      return true;
+    };
+    const normalizedText = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+    const containsNewIdenticalTemplate = (messages, baseline, template) => {
+      if (!template || !messages.length) return false;
+      const lastBaseline = baseline[baseline.length - 1] || "";
+      const baselineIndex = lastBaseline ? messages.lastIndexOf(lastBaseline) : -1;
+      const newMessages = baselineIndex >= 0
+        ? messages.slice(baselineIndex + 1)
+        : (messages[messages.length - 1] !== lastBaseline ? messages.slice(-1) : []);
+      const target = normalizedText(template);
+      return newMessages.some((message) => {
+        const raw = String(message || "");
+        const separator = raw.indexOf(": ");
+        const body = separator >= 0 ? raw.slice(separator + 2) : raw;
+        return normalizedText(body) === target;
+      });
+    };
+
+    blog(`Auto-save guard: kiểm tra tin nhắn mới trước khi lưu (lượt ${guardAttempt}/3)...`);
+    let latest = await getLatestConversation();
+    if (!latest.messages.length && !latest.orderTemplate) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
         summary: "Đã điền form nhưng không đọc xác minh được hội thoại mới nhất. Không tự lưu; giữ tab mở để kiểm tra." };
     }
@@ -1107,24 +1145,45 @@ async function runFill(tabId, options = {}) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
         summary: "Đã điền form nhưng tin nhắn mới nhất có dấu hiệu tracking/CSKH. Đã hủy tự lưu; giữ tab mở để kiểm tra." };
     }
-    if (latestOrderTemplate && latestOrderTemplate !== initialOrderTemplate) {
-      blog(`Auto-save guard: phát hiện template đơn hàng mới/thay đổi ở lượt ${guardAttempt}/3; chờ 20 giây trước khi trích xuất lại và cập nhật form.`);
+
+    const newMessageDetected = hasNewMessages(latest.messages, initialMessages);
+    if (newMessageDetected) {
+      blog("Auto-save guard: phát hiện tin nhắn mới; chờ 20 giây rồi kiểm tra lại hội thoại.");
+      await sleepGuard(20000);
+      latest = await getLatestConversation();
+      if (!latest.messages.length && !latest.orderTemplate) {
+        return { ok: false, filled: true, reviewRequired: true, submitted: false,
+          summary: "Sau khi chờ 20 giây không đọc xác minh được hội thoại. Không tự lưu; giữ tab mở để kiểm tra." };
+      }
+      if (hasRecentStopPhrase(latest.messages, msgCount)) {
+        return { ok: false, filled: true, reviewRequired: true, submitted: false,
+          summary: "Sau khi chờ 20 giây, tin nhắn mới nhất có dấu hiệu tracking/CSKH. Đã hủy tự lưu; giữ tab mở để kiểm tra." };
+      }
+    }
+
+    const templateChanged = latest.orderTemplate !== initialOrderTemplate
+      || containsNewIdenticalTemplate(latest.messages, initialMessages, latest.orderTemplate);
+
+    if (templateChanged) {
+      blog(`Auto-save guard: sau khi kiểm tra, phát hiện template đơn hàng mới/thay đổi ở lượt ${guardAttempt}/3; chạy lại luồng trích xuất và cập nhật form.`);
       if (guardAttempt >= 3) {
-        // Hết 2 lần retry mà hội thoại vẫn đổi: tuyệt đối không lưu, đóng tab đơn hàng.
+        // Đã dùng hết 2 lần retry: tuyệt đối không lưu, đóng tab đơn hàng.
         await detachDebugger(tabId);
         try {
           await chrome.tabs.remove(tabId);
-          blog("Auto-save guard: hội thoại vẫn thay đổi sau 2 lần retry; đã đóng tab, không lưu đơn.");
+          blog("Auto-save guard: template vẫn thay đổi sau 2 lần retry; đã đóng tab, không lưu đơn.");
         } catch (e) {
           blog("Auto-save guard: không lưu đơn; đóng tab thất bại:", e.message);
         }
         return { ok: false, filled: true, reviewRequired: true, submitted: false,
-          summary: "Hội thoại vẫn thay đổi sau 2 lần retry. Không lưu đơn và đã đóng tab." };
+          summary: "Template đơn hàng vẫn thay đổi sau 2 lần retry. Không lưu đơn và đã đóng tab." };
       }
-      await sleepGuard(20000);
       return await runFill(tabId, { mode, _guardAttempt: guardAttempt + 1 });
     }
-    blog("Auto-save guard: không có template đơn hàng mới/thay đổi; yêu cầu frame form bấm Lưu.");
+
+    blog(newMessageDetected
+      ? "Auto-save guard: chỉ có tin nhắn thông thường, template đơn hàng không đổi; không trích xuất/điền lại, tiếp tục lưu."
+      : "Auto-save guard: không có tin nhắn mới hoặc template đơn hàng thay đổi; tiếp tục lưu.");
     const saveRes = await sendSaveToOrderFrame(tabId);
     if (!saveRes?.saved) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
