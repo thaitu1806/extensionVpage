@@ -1091,8 +1091,8 @@ async function runFill(tabId, options = {}) {
   const fillMode = guardedAutoSave ? "webhook-precheck" : mode;
   const fillRes = await fillForm(tabId, extracted, { mode: fillMode });
 
-  // Auto-save webhook: kiểm tra hội thoại NGAY TRƯỚC KHI LƯU.
-  // Nếu hội thoại đổi, đợi 20 giây cho bot/khách gửi tiếp rồi chạy lại từ bước trích xuất.
+  // Auto-save webhook: trước khi lưu, chỉ kiểm tra khối template thông tin/xác nhận đơn hàng mới nhất.
+  // Tin nhắn chat thông thường thay đổi không làm điền lại form; chỉ template đơn hàng đổi mới kích hoạt retry.
   // Tối đa 2 lần retry (tổng cộng 3 lượt điền form).
   if (guardedAutoSave && fillRes?.filled) {
     const sleepGuard = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1107,8 +1107,8 @@ async function runFill(tabId, options = {}) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
         summary: "Đã điền form nhưng tin nhắn mới nhất có dấu hiệu tracking/CSKH. Đã hủy tự lưu; giữ tab mở để kiểm tra." };
     }
-    if (latestSignature !== initialChatSignature) {
-      blog(`Auto-save guard: phát hiện hội thoại thay đổi ở lượt ${guardAttempt}/3; chờ 20 giây trước khi trích xuất lại.`);
+    if (latestOrderTemplate && latestOrderTemplate !== initialOrderTemplate) {
+      blog(`Auto-save guard: phát hiện template đơn hàng mới/thay đổi ở lượt ${guardAttempt}/3; chờ 20 giây trước khi trích xuất lại và cập nhật form.`);
       if (guardAttempt >= 3) {
         // Hết 2 lần retry mà hội thoại vẫn đổi: tuyệt đối không lưu, đóng tab đơn hàng.
         await detachDebugger(tabId);
