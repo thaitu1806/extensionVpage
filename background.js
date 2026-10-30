@@ -881,6 +881,20 @@ async function openOrderTab(tabId) {
   return clickedAny;
 }
 
+async function sendSaveToOrderFrame(tabId) {
+  const frames = orderFramesFirst(await getFrames(tabId));
+  for (const { frameId } of frames) {
+    try {
+      const res = await sendToFrame(tabId, frameId, { type: "SAVE_VERIFIED_ORDER" });
+      blog(`frame ${frameId}: SAVE_VERIFIED_ORDER -> ${JSON.stringify(res)}`);
+      if (res?.saved) return res;
+    } catch (e) {
+      blog(`frame ${frameId}: không phản hồi SAVE_VERIFIED_ORDER (${e.message}).`);
+    }
+  }
+  return { saved: false };
+}
+
 async function fillForm(tabId, extracted, options = {}) {
   // Ưu tiên frame crmadd trước để không điền nhầm vào trang chat.
   const frames = orderFramesFirst(await getFrames(tabId));
@@ -900,6 +914,8 @@ async function fillForm(tabId, extracted, options = {}) {
 
 async function runFill(tabId, options = {}) {
   const mode = options.mode || "manual";
+  const guardAttempt = Number(options._guardAttempt) || 1;
+  let initialChatSignature = "";
   blog("=== BẮT ĐẦU RUN_FILL cho tab", tabId, "mode =", mode, "===");
   const cfg = await chrome.storage.local.get({
     apiToken: "", model: "deepseek-chat", msgCount: "3", catalog: "",
@@ -926,6 +942,7 @@ async function runFill(tabId, options = {}) {
     if (hasRecentStopPhrase(collected.messages, msgCount)) {
       throw new Error("Một trong 3 tin nhắn gần nhất có dấu hiệu tracking/tin CSKH của Bếp; đã hủy thao tác lên đơn.");
     }
+    initialChatSignature = JSON.stringify({ messages: collected.messages, orderConfirmation: collected.orderConfirmation });
   }
 
   // Gửi cho AI chỉ danh sách TÊN hiển thị (bỏ "::từ khóa" và giá) để model
@@ -1069,7 +1086,44 @@ async function runFill(tabId, options = {}) {
   await new Promise((r) => setTimeout(r, 3000));
 
   blog("Bắt đầu điền form...");
-  const fillRes = await fillForm(tabId, extracted, { mode });
+  const cfgAutoSave = await chrome.storage.local.get({ autoSubmitOrder: false });
+  const guardedAutoSave = mode === "webhook" && cfgAutoSave.autoSubmitOrder === true;
+  const fillMode = guardedAutoSave ? "webhook-precheck" : mode;
+  const fillRes = await fillForm(tabId, extracted, { mode: fillMode });
+
+  // Khi tự lưu webhook: chờ 10 giây, kiểm tra tối đa 3 vòng trước khi cho phép lưu.
+  if (guardedAutoSave && fillRes?.filled) {
+    const sleepGuard = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    blog(`Auto-save guard: lần kiểm tra ${guardAttempt}/3; chờ 10 giây để hội thoại ổn định...`);
+    await sleepGuard(10000);
+    const latest = await collectFromFrames(tabId, msgCount);
+    const latestSignature = JSON.stringify({ messages: latest.messages, orderConfirmation: latest.orderConfirmation });
+    if (!latest.messages.length && !latest.orderConfirmation) {
+      return { ok: false, filled: true, reviewRequired: true, submitted: false,
+        summary: "Đã điền form nhưng không đọc xác minh được hội thoại mới nhất. Không tự lưu; giữ tab mở để kiểm tra." };
+    }
+    if (hasRecentStopPhrase(latest.messages, msgCount)) {
+      return { ok: false, filled: true, reviewRequired: true, submitted: false,
+        summary: "Đã điền form nhưng tin nhắn mới nhất có dấu hiệu tracking/CSKH. Đã hủy tự lưu; giữ tab mở để kiểm tra." };
+    }
+    if (latestSignature !== initialChatSignature) {
+      blog(`Auto-save guard: phát hiện hội thoại thay đổi ở lần ${guardAttempt}/3.`);
+      if (guardAttempt >= 3) {
+        return { ok: false, filled: true, reviewRequired: true, submitted: false,
+          summary: "Hội thoại vẫn thay đổi sau 3 lần kiểm tra. Không tự lưu; giữ tab mở để kiểm tra thủ công." };
+      }
+      return await runFill(tabId, { mode, _guardAttempt: guardAttempt + 1 });
+    }
+    blog("Auto-save guard: hội thoại ổn định; yêu cầu frame form bấm Lưu.");
+    const saveRes = await sendSaveToOrderFrame(tabId);
+    if (!saveRes?.saved) {
+      return { ok: false, filled: true, reviewRequired: true, submitted: false,
+        summary: "Dữ liệu đã được kiểm tra nhưng không xác nhận được thao tác Lưu. Giữ tab mở để kiểm tra." };
+    }
+    fillRes.submitted = true;
+    fillRes.reviewRequired = false;
+    fillRes.info = (fillRes.info || "") + "; đã kiểm tra hội thoại và lưu đơn";
+  }
 
   // Gỡ debugger (nếu đã attach khi click mã KM) để tắt thanh cảnh báo.
   await detachDebugger(tabId);
