@@ -47,8 +47,28 @@ const DEFAULTS = {
 
 const $ = (id) => document.getElementById(id);
 
+function formatLastTelegramScanTime(value) {
+  const timestamp = Number(value) || 0;
+  if (!timestamp) return "Chưa có dữ liệu quét.";
+  try {
+    return new Date(timestamp).toLocaleString("vi-VN", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
+      hour12: false
+    });
+  } catch (_) {
+    return new Date(timestamp).toLocaleString();
+  }
+}
+
+function renderLastTelegramScanTime(value) {
+  const el = $("lastTelegramScanAt");
+  if (el) el.textContent = formatLastTelegramScanTime(value);
+}
+
 function load() {
-  chrome.storage.local.get(DEFAULTS, (cfg) => {
+  chrome.storage.local.get({ ...DEFAULTS, lastTelegramScanAt: 0 }, (cfg) => {
+    renderLastTelegramScanTime(cfg.lastTelegramScanAt);
     $("apiToken").value = cfg.apiToken || "";
     $("model").value = cfg.model || "deepseek-chat";
     $("msgCount").value = cfg.msgCount || "3";
@@ -241,6 +261,12 @@ $("manualOrderTest").addEventListener("click", () => {
       status.className = "status err";
     }
   });
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.lastTelegramScanAt) {
+    renderLastTelegramScanTime(changes.lastTelegramScanAt.newValue);
+  }
 });
 
 document.addEventListener("DOMContentLoaded", load);
