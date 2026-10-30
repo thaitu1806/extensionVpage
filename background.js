@@ -289,7 +289,7 @@ function isHcmLikeRegion(regionText, hcmProvinces) {
   return false;
 }
 
-function parseOrderConfirmation(text) {
+function parseOrderConfirmation(text, preferLastFields = false) {
   if (!text) return null;
 
   // Chuẩn hóa: bỏ gạch đầu dòng "- ", chèn xuống dòng trước các nhãn đã biết.
@@ -317,13 +317,12 @@ function parseOrderConfirmation(text) {
     .replace(/(?<!Phí )Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
-    const stop = stopLabels.join("|");
-    // Nội dung test có thể chứa nhiều khối xác nhận đơn nối liền nhau.
-    // Lấy lần xuất hiện CUỐI của từng trường để ưu tiên đơn được cập nhật mới nhất,
-    // thay vì vô tình lấy sản phẩm/địa chỉ từ khối đơn cũ đầu tiên.
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
+    const stop = stopLabels.map((l) => l.replace(/[.*+?^$\{\}()|[\]\\\\]/g, "\\$&")).join("|");
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", preferLastFields ? "ig" : "i");
     const matches = [...t.matchAll(re)];
-    return matches.length ? matches[matches.length - 1][1].trim() : "";
+    return matches.length
+      ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
+      : "";
   };
 
   const STOPS = ["Mã đơn hàng:", "Tên người nhận:", "Số điện thoại:", "Địa chỉ:",
@@ -914,7 +913,7 @@ async function runFill(tabId, options = {}) {
   // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
   if (options.orderText) {
     blog("Manual test: parse nội dung đơn được dán.");
-    extracted = parseOrderConfirmation(options.orderText);
+    extracted = parseOrderConfirmation(options.orderText, true);
     if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
     extracted._source = "manual-test";
   } else {
