@@ -1091,11 +1091,12 @@ async function runFill(tabId, options = {}) {
   const fillMode = guardedAutoSave ? "webhook-precheck" : mode;
   const fillRes = await fillForm(tabId, extracted, { mode: fillMode });
 
-  // Khi tự lưu webhook: chờ 10 giây, kiểm tra tối đa 3 vòng trước khi cho phép lưu.
+  // Auto-save webhook: kiểm tra hội thoại NGAY TRƯỚC KHI LƯU.
+  // Nếu hội thoại đổi, đợi 10 giây cho bot/khách gửi tiếp rồi chạy lại từ bước trích xuất.
+  // Tối đa 2 lần retry (tổng cộng 3 lượt điền form).
   if (guardedAutoSave && fillRes?.filled) {
     const sleepGuard = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    blog(`Auto-save guard: lần kiểm tra ${guardAttempt}/3; chờ 10 giây để hội thoại ổn định...`);
-    await sleepGuard(10000);
+    blog(`Auto-save guard: kiểm tra hội thoại trước khi lưu (lượt ${guardAttempt}/3)...`);
     const latest = await collectFromFrames(tabId, msgCount);
     const latestSignature = JSON.stringify({ messages: latest.messages, orderConfirmation: latest.orderConfirmation });
     if (!latest.messages.length && !latest.orderConfirmation) {
@@ -1107,14 +1108,15 @@ async function runFill(tabId, options = {}) {
         summary: "Đã điền form nhưng tin nhắn mới nhất có dấu hiệu tracking/CSKH. Đã hủy tự lưu; giữ tab mở để kiểm tra." };
     }
     if (latestSignature !== initialChatSignature) {
-      blog(`Auto-save guard: phát hiện hội thoại thay đổi ở lần ${guardAttempt}/3.`);
+      blog(`Auto-save guard: phát hiện hội thoại thay đổi ở lượt ${guardAttempt}/3; chờ 10 giây trước khi trích xuất lại.`);
       if (guardAttempt >= 3) {
         return { ok: false, filled: true, reviewRequired: true, submitted: false,
-          summary: "Hội thoại vẫn thay đổi sau 3 lần kiểm tra. Không tự lưu; giữ tab mở để kiểm tra thủ công." };
+          summary: "Hội thoại vẫn thay đổi sau 2 lần retry. Không tự lưu; giữ tab mở để kiểm tra thủ công." };
       }
+      await sleepGuard(10000);
       return await runFill(tabId, { mode, _guardAttempt: guardAttempt + 1 });
     }
-    blog("Auto-save guard: hội thoại ổn định; yêu cầu frame form bấm Lưu.");
+    blog("Auto-save guard: hội thoại không thay đổi; yêu cầu frame form bấm Lưu.");
     const saveRes = await sendSaveToOrderFrame(tabId);
     if (!saveRes?.saved) {
       return { ok: false, filled: true, reviewRequired: true, submitted: false,
