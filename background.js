@@ -2133,6 +2133,11 @@ async function runScanCycleSafe() {
   _scanBusy = true;
   try {
     await runScanCycle();
+    // Chỉ ghi nhận sau khi một lượt quét đã kết thúc bình thường.
+    // Khóa riêng biệt để việc lưu thời gian không ghi đè cấu hình người dùng.
+    const completedAt = Date.now();
+    await chrome.storage.local.set({ lastTelegramScanAt: completedAt });
+    blog("Đã cập nhật thời gian quét Telegram lần cuối:", new Date(completedAt).toLocaleString("vi-VN"));
   } catch (e) {
     blog("runScanCycle lỗi:", e?.stack || e?.message || String(e));
   } finally {
