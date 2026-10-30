@@ -1505,6 +1505,34 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 
 // Chạy 1 lượt quét: mở LẦN LƯỢT các hội thoại CHƯA ĐỌC, nếu tin GẦN NHẤT bên
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
+async function processScanNotification(item, cfg, notified) {
+  const result = await tgSend(cfg.tgToken, cfg.tgChatId, item.text, item.markup);
+  if (!result.ok) {
+    blog(`Tuần tự: gửi Telegram lỗi cho "${item.conversationName}": ${result.error}; sẽ thử lại ở lượt quét sau.`);
+    return false;
+  }
+
+  notified[item.key] = Date.now();
+  await chrome.storage.local.set({ tgNotified: notified });
+  blog(`Tuần tự: đã gửi Telegram loại=${item.kind} cho "${item.conversationName}".`);
+
+  // Hoàn tất tự lên đơn của box hiện tại trước khi chuyển sang box kế tiếp.
+  if (item.kind === "order" && cfg.autoOrderOnNotify && cfg.autoFillEnabled && item.phone) {
+    try {
+      blog(`Tuần tự AutoOrder: bắt đầu lên đơn cho ${item.phone} trước khi chuyển box.`);
+      const autoResult = await fillOrderByPhone(item.phone);
+      blog(`Tuần tự AutoOrder: kết quả lên đơn ${item.phone}: ${JSON.stringify(autoResult).slice(0, 300)}`);
+    } catch (e) {
+      blog(`Tuần tự AutoOrder: lên đơn lỗi cho ${item.phone}: ${e?.message || e}`);
+    }
+  } else if (item.kind === "order" && cfg.autoOrderOnNotify && !cfg.autoFillEnabled) {
+    blog("AutoOrderOnNotify đang bật nhưng autoFillEnabled đang tắt; bỏ qua tự lên đơn.");
+  }
+
+  await new Promise((r) => setTimeout(r, 400));
+  return true;
+}
+
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
     tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", tgMsgCount: 3, scanMode: "unread", scanStrategy: "fixed", scanBaselineAt: 0,
@@ -1658,15 +1686,15 @@ async function runScanCycle() {
         fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${contact.phone}` }]);
       }
       fallbackButtons.push([{ text: "💬 Mở hội thoại", url: fallbackUrl }]);
-      pendingNotifications.push({
+      await processScanNotification({
         kind: "fallback",
         key: fallbackKey,
         text: fallbackText,
         markup: { inline_keyboard: fallbackButtons },
         phone: contact.phone,
         conversationName: conv.name
-      });
-      blog(`Quét: "${conv.name}" - đã xếp cảnh báo dự phòng vào batch cho ${contact.phone}; sẽ gửi sau khi quét hết lượt.`);
+      }, cfg, notified);
+      blog(`Quét: "${conv.name}" - đã xử lý xong cảnh báo dự phòng; mới chuyển sang box tiếp theo.`);
       continue;
     }
 
@@ -1710,49 +1738,19 @@ async function runScanCycle() {
     if (orderUrl) buttons.push([{ text: "💬 Mở hội thoại", url: orderUrl }]);
     const markup = buttons.length ? { inline_keyboard: buttons } : undefined;
 
-    pendingNotifications.push({
+    await processScanNotification({
       kind: "order",
       key,
       text,
       markup,
       phone,
       conversationName: conv.name
-    });
-    blog(`Quét: "${conv.name}" - đã xếp đơn vào batch thông báo; sẽ gửi sau khi quét hết lượt.`);
-
-    // Nhịp nhẹ giữa các hội thoại vẫn giữ để tránh làm VPage quá tải.
-    await new Promise((r) => setTimeout(r, 400));
+    }, cfg, notified);
+    blog(`Quét: "${conv.name}" - đã xử lý xong box (Telegram và luồng tự lên đơn nếu bật); mới chuyển sang box tiếp theo.`);
   }
 
-  // Đã quét xong toàn bộ hội thoại: lúc này mới gửi các thông báo đã gom.
-  blog(`Batch notify: quét xong ${scanned}/${conversations.length} box; bắt đầu gửi ${pendingNotifications.length} thông báo Telegram.`);
-  for (const item of pendingNotifications) {
-    const result = await tgSend(cfg.tgToken, cfg.tgChatId, item.text, item.markup);
-    if (!result.ok) {
-      blog(`Batch notify: gửi Telegram lỗi cho "${item.conversationName}": ${result.error}; chưa đánh dấu đã gửi để có thể thử lại lượt sau.`);
-      await new Promise((r) => setTimeout(r, 400));
-      continue;
-    }
-
-    notified[item.key] = Date.now();
-    sent++;
-    blog(`Batch notify: đã gửi Telegram loại=${item.kind} cho "${item.conversationName}" (key=${item.key}).`);
-
-    // Tự lên đơn chỉ chạy sau khi batch quét đã hoàn tất và thông báo Telegram gửi thành công.
-    if (item.kind === "order" && cfg.autoOrderOnNotify && cfg.autoFillEnabled && item.phone) {
-      try {
-        blog(`AutoOrderOnNotify: tự động lên đơn cho ${item.phone} sau thông báo Telegram.`);
-        const autoResult = await fillOrderByPhone(item.phone);
-        blog(`AutoOrderOnNotify: kết quả lên đơn ${item.phone}: ${JSON.stringify(autoResult).slice(0, 300)}`);
-      } catch (e) {
-        blog(`AutoOrderOnNotify: lên đơn tự động lỗi cho ${item.phone}: ${e?.message || e}`);
-      }
-    } else if (item.kind === "order" && cfg.autoOrderOnNotify && !cfg.autoFillEnabled) {
-      blog("AutoOrderOnNotify đang bật nhưng nhận lệnh lên đơn tự động (autoFillEnabled) đang tắt; bỏ qua.");
-    }
-
-    await new Promise((r) => setTimeout(r, 400));
-  }
+  // Mỗi box đã được xử lý trọn vẹn bên trong vòng lặp trước khi sang box tiếp theo.
+  blog(`Tuần tự: hoàn tất lượt quét ${scanned}/${conversations.length} box; không xử lý song song.`);
   const saveState = { tgNotified: notified };
   if (incremental) {
     const maxActivityAt = Math.max(0, ...conversations.map((conv) => Number(conv.activityAt) || 0));
