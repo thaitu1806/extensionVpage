@@ -118,7 +118,12 @@
 
     <label for="scanIntervalMinutes">Chu kỳ tự động quét (phút)</label>
     <input type="number" id="scanIntervalMinutes" min="1" max="1440" step="1" value="3" />
-    <div class="hint">Mặc định 3 phút. Chọn từ 1 đến 1440 phút; lịch quét được cập nhật khi bấm Lưu cấu hình.</div>
+    <div class="hint">Mặc định 3 phút. Chọn từ 1 đến 1440 phút; chu kỳ mới có hiệu lực sau khi bấm Lưu cấu hình.</div>
+    <div class="account-box" style="background:#f8fafc;border-color:#e2e8f0;">
+      <b>Thời gian quét Telegram lần cuối:</b>
+      <span id="lastTelegramScanAt">Chưa có dữ liệu quét.</span>
+      <div class="hint">Tự cập nhật sau mỗi lượt quét và được lưu riêng; không cần bấm Lưu cấu hình.</div>
+    </div>
 
     <label for="tgToken">Telegram Bot Token</label>
     <input type="password" id="tgToken" placeholder="123456:ABC-DEF..." autocomplete="off" />
