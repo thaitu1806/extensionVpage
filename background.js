@@ -1110,8 +1110,16 @@ async function runFill(tabId, options = {}) {
     if (latestSignature !== initialChatSignature) {
       blog(`Auto-save guard: phát hiện hội thoại thay đổi ở lượt ${guardAttempt}/3; chờ 10 giây trước khi trích xuất lại.`);
       if (guardAttempt >= 3) {
+        // Hết 2 lần retry mà hội thoại vẫn đổi: tuyệt đối không lưu, đóng tab đơn hàng.
+        await detachDebugger(tabId);
+        try {
+          await chrome.tabs.remove(tabId);
+          blog("Auto-save guard: hội thoại vẫn thay đổi sau 2 lần retry; đã đóng tab, không lưu đơn.");
+        } catch (e) {
+          blog("Auto-save guard: không lưu đơn; đóng tab thất bại:", e.message);
+        }
         return { ok: false, filled: true, reviewRequired: true, submitted: false,
-          summary: "Hội thoại vẫn thay đổi sau 2 lần retry. Không tự lưu; giữ tab mở để kiểm tra thủ công." };
+          summary: "Hội thoại vẫn thay đổi sau 2 lần retry. Không lưu đơn và đã đóng tab." };
       }
       await sleepGuard(10000);
       return await runFill(tabId, { mode, _guardAttempt: guardAttempt + 1 });
