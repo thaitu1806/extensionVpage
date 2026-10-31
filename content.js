@@ -404,10 +404,23 @@ async function fillForm(data) {
     log("Tìm ô 'Tên':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
       const incomingName = String(data.name || "").replace(/\s+/g, " ").trim();
-      log(`-> GHI ĐÈ tên khách: giá trị cũ="${el.value || ""}", giá trị mới="${incomingName}".`);
-      setNativeValue(el, incomingName);
-      fireFocusBlur(el);
-      done.push("tên");
+      const existingName = String(el.value || "").replace(/\s+/g, " ").trim();
+      const normalizedIncoming = normalize(incomingName);
+      const normalizedExisting = normalize(existingName);
+      // Nhanh.vn có thể tự nạp họ tên đầy đủ từ hồ sơ khách (vd. "Nguyễn Vương"),
+      // trong khi template chốt đơn chỉ chứa tên cuối ("Vương"). Nếu tên template
+      // là một cụm từ độc lập nằm trong tên đang có, giữ nguyên tên đầy đủ đã nạp.
+      const existingHasIncomingName = !!normalizedIncoming
+        && !!normalizedExisting
+        && (` ${normalizedExisting} `).includes(` ${normalizedIncoming} `);
+      if (existingHasIncomingName) {
+        log(`-> GIỮ tên khách đã load từ hồ sơ: "${existingName}" có chứa tên template "${incomingName}".`);
+      } else {
+        log(`-> GHI ĐÈ tên khách: giá trị cũ="${existingName}", giá trị mới="${incomingName}".`);
+        setNativeValue(el, incomingName);
+        fireFocusBlur(el);
+        done.push("tên");
+      }
     }
   }
   if (data.phone) {
