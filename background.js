@@ -1964,7 +1964,6 @@ async function fillOrderByPhone(phone) {
   const activateImmediately = mode === "default";
   blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới.`);
   const tab = await chrome.tabs.create({ url: targetUrl, active: activateImmediately });
-  let keepTabForReview = false;
   let res;
   try {
     await waitTabComplete(tab.id, 20000);
@@ -1980,39 +1979,16 @@ async function fillOrderByPhone(phone) {
 
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
     res = await runFill(tab.id, { mode: "webhook" });
-    keepTabForReview = !!res?.reviewRequired || res?.ok === false || res?.filled === false;
     blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
     return res;
   } finally {
-    // Nếu webhook đã bật tự lưu nhưng không bấm được nút Lưu, cho form 15 giây rồi tự đóng tab.
-    // Luồng lưu thành công vẫn đóng tab ngay như trước; chế độ review vẫn giữ tab.
-    if (typeof res !== "undefined" && res?.saveFailed) {
-      blog(`AutoFill webhook: không lưu được; giữ tab #${tab.id} thêm 15 giây trước khi tự đóng.`);
-      await new Promise((r) => setTimeout(r, 15000));
-      try {
-        await chrome.tabs.remove(tab.id);
-        blog(`AutoFill webhook: đã tự đóng tab lỗi #${tab.id} sau 15 giây.`);
-      } catch (e) {
-        blog(`AutoFill webhook: không đóng được tab lỗi #${tab.id}: ${e.message}`);
-      }
-    } else if (res?.submitted === true) {
-      // Đơn đã được lưu thành công thì luôn đóng tab, kể cả khi cờ reviewRequired
-      // bị trả về không nhất quán từ một nhánh xử lý bên dưới.
-      try {
-        await chrome.tabs.remove(tab.id);
-        blog(`AutoFill webhook: đơn đã lưu; force đóng tab #${tab.id}.`);
-      } catch (e) {
-        blog(`AutoFill webhook: đơn đã lưu nhưng không đóng được tab #${tab.id}: ${e.message}`);
-      }
-    } else if (keepTabForReview) {
-      blog(`AutoFill webhook: giữ tab riêng #${tab.id} mở để kiểm tra (chế độ chưa tự lưu hoặc cần review).`);
-    } else {
-      try {
-        await chrome.tabs.remove(tab.id);
-        blog(`AutoFill webhook: đã đóng tab riêng #${tab.id}.`);
-      } catch (e) {
-        blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
-      }
+    // Không giữ tab để review: luôn tự đóng tab đơn sau khi xử lý xong,
+    // kể cả khi cần review, lỗi lưu, hoặc không tìm thấy hội thoại.
+    try {
+      await chrome.tabs.remove(tab.id);
+      blog(`AutoFill webhook: luôn tự đóng tab đơn #${tab.id}; không giữ tab review.`);
+    } catch (e) {
+      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
     }
   }
 }
