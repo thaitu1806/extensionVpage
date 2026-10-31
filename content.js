@@ -210,12 +210,13 @@ function isOrderConfirmation(t) {
   if (!t) return false;
   if (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t)) return true;
   if (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t)) return true;
-  // Khối tóm tắt Business Agent: cần có SĐT + nhãn "Sản phẩm" + ít nhất 1 dòng
-  // "N x ...". Đây là khối chốt đơn chính thức, phải được quét để lấy ĐÚNG đơn
-  // chốt GẦN NHẤT (quét từ dưới lên).
+  // Khối tóm tắt Business Agent: cần có SĐT + nhãn "Sản phẩm" và dấu hiệu
+  // sản phẩm. Hỗ trợ cả dòng thường "2 x ..." lẫn combo như
+  // "Combo 3 túi ... 250g x 3 túi (750g)".
   if (/(Số điện thoại|Điện thoại)/i.test(t) &&
       /Sản ?phẩm\s*:/i.test(t) &&
-      /\d+\s*x\s*\S/i.test(t)) return true;
+      (/\d+\s*x\s*\S/i.test(t) ||
+       /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t))) return true;
   return false;
 }
 
