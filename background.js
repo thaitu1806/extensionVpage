@@ -183,11 +183,18 @@ function parseProductLines(block) {
   const products = [];
   if (!block) return products;
 
+  // Shop đôi khi ghi số lượng ở cuối tên: "Gạo Thường (Không Cay) 250g x 3 túi".
+  // Chuẩn hóa sang format catalog trước khi áp dụng bộ parser chung.
+  const normalizedBlock = block.replace(
+    /(?:Cơm\s*cháy\s*)?Gạo\s*Thường\s*\((Cay\s*Vừa|Siêu\s*Cay|Không\s*Cay)\)\s*\d+\s*g\s*x\s*(\d+)\s*túi\b/gi,
+    (_, flavor, qty) => "\n" + qty + " x Cơm cháy Gạo Thường - " + flavor.replace(/\s+/g, " ").trim()
+  );
+
   // Tách thành từng "đơn vị" bắt đầu bằng [+ optional] SL x ...
   // Dùng lookahead tới điểm bắt đầu dòng sản phẩm kế tiếp (hoặc hết chuỗi).
   const unitRe = /\+?\s*(\d+)\s*x\s*([\s\S]*?)(?=(?:\+?\s*\d+\s*x\s)|$)/gi;
   let m;
-  while ((m = unitRe.exec(block)) !== null) {
+  while ((m = unitRe.exec(normalizedBlock)) !== null) {
     const qty = parseInt(m[1], 10);
     let rest = (m[2] || "").trim();
     if (!rest) continue;
@@ -1988,8 +1995,17 @@ async function fillOrderByPhone(phone) {
       } catch (e) {
         blog(`AutoFill webhook: không đóng được tab lỗi #${tab.id}: ${e.message}`);
       }
+    } else if (res?.submitted === true) {
+      // Đơn đã được lưu thành công thì luôn đóng tab, kể cả khi cờ reviewRequired
+      // bị trả về không nhất quán từ một nhánh xử lý bên dưới.
+      try {
+        await chrome.tabs.remove(tab.id);
+        blog(`AutoFill webhook: đơn đã lưu; force đóng tab #${tab.id}.`);
+      } catch (e) {
+        blog(`AutoFill webhook: đơn đã lưu nhưng không đóng được tab #${tab.id}: ${e.message}`);
+      }
     } else if (keepTabForReview) {
-      blog(`AutoFill webhook: giữ tab riêng #${tab.id} mở để kiểm tra (chế độ chưa tự lưu).`);
+      blog(`AutoFill webhook: giữ tab riêng #${tab.id} mở để kiểm tra (chế độ chưa tự lưu hoặc cần review).`);
     } else {
       try {
         await chrome.tabs.remove(tab.id);
