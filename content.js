@@ -1017,14 +1017,30 @@ function getRegionDisplayText(input) {
 
  // So sánh địa giới đã chọn với địa chỉ khách cung cấp. Bỏ tiền tố loại địa giới
  // và chuẩn hóa bí danh tỉnh/thành để "TP Thủ Đức" không lệch vì cách viết.
+function normalizeAdminName(value) {
+  let s = stripRegionType(value);
+  // Nhanh.vn có thể trả "Ngã Sáu" thay cho "Ngã 6".
+  const numberWords = {
+    mot: "1", hai: "2", ba: "3", bon: "4", tu: "4",
+    nam: "5", sau: "6", bay: "7", tam: "8", chin: "9", muoi: "10"
+  };
+  return s.split(" ").map((word) => numberWords[word] || word).join(" ").replace(/\\s+/g, " ").trim();
+}
+
+function sameAdminUnit(a, b) {
+  const na = normalizeAdminName(a);
+  const nb = normalizeAdminName(b);
+  return !!na && !!nb && na === nb;
+}
+
 function sameRegionSelection(currentText, targetText) {
-  const currentParts = String(currentText || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const targetParts = String(targetText || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const currentParts = String(currentText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const targetParts = String(targetText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
   if (!currentParts.length || !targetParts.length || currentParts.length !== targetParts.length) return false;
   for (let i = 0; i < targetParts.length; i++) {
     if (i === targetParts.length - 1) {
       if (!sameProvinceName(currentParts[i], targetParts[i])) return false;
-    } else if (stripRegionType(currentParts[i]) !== stripRegionType(targetParts[i])) {
+    } else if (!sameAdminUnit(currentParts[i], targetParts[i])) {
       return false;
     }
   }
@@ -1046,9 +1062,9 @@ function isIncompleteThreeLevelSelection(input, regionText) {
   // Chỉ xác định là "đã chọn thiếu phường" khi kết quả vẫn thuộc đúng tỉnh/thành đích.
   if (!sameProvinceName(displayedProvince, expectedProvince)) return false;
 
-  const normalizedDisplay = normalize(display);
-  const normalizedWard = normalize(expectedWard);
-  const wardPresent = normalizedWard.length > 0 && normalizedDisplay.includes(normalizedWard);
+  const displayWard = displayParts[0] || "";
+  const wardPresent = sameAdminUnit(displayWard, expectedWard)
+    || normalizeAdminName(display).includes(normalizeAdminName(expectedWard));
   if (!wardPresent) {
     log(`fillAddressRegion: kết quả 3 cấp bị thiếu phường "${parts[0]}"; placeholder hiện "${display}".`);
     return true;
@@ -1259,20 +1275,24 @@ async function waitStableSuggestions(timeout = 8000) {
 
 // Tìm toggle "Địa chỉ 2 cấp": checkbox + label click được.
 function findTwoLevelToggle() {
-  // Ưu tiên trong khối địa chỉ (group_header có app-checkbox "Địa chỉ 2 cấp").
-  const labels = Array.from(document.querySelectorAll("app-location-danymic label, label"));
-  for (const lb of labels) {
-    if (/địa chỉ 2 cấp/i.test(textOf(lb))) {
-      const cb = lb.querySelector("input[type='checkbox']")
-        || (lb.closest("app-checkbox") || lb.parentElement)?.querySelector("input[type='checkbox']");
-      // Phần tử click được: cả label (để click thật trúng vùng toggle).
-      return { cb, clickEl: lb };
-    }
+  // Tìm theo text "Địa chỉ 2 cấp" cả khi checkbox nằm ngoài label trong Angular.
+  const roots = Array.from(document.querySelectorAll("app-location-danymic, app-checkbox, label, .group_header, .form-group"));
+  for (const root of roots) {
+    if (!/địa chỉ 2 cấp/i.test(textOf(root))) continue;
+    const cb = root.matches("input[type='checkbox']")
+      ? root
+      : root.querySelector("input[type='checkbox']")
+        || root.parentElement?.querySelector("input[type='checkbox']")
+        || root.closest("app-checkbox")?.querySelector("input[type='checkbox']");
+    if (!cb) continue;
+    const clickEl = cb.closest("label") || root.querySelector("label") || root.closest("label") || cb.parentElement || root;
+    return { cb, clickEl };
   }
-  const cb = document.querySelector("app-location-danymic input[type='checkbox']");
-  if (cb) {
-    const lb = cb.closest("label") || cb.parentElement;
-    return { cb, clickEl: lb || cb };
+  // Fallback có giới hạn trong component địa chỉ, không chọn checkbox bất kỳ của form.
+  const component = document.querySelector("app-location-danymic");
+  if (component && /địa chỉ 2 cấp/i.test(textOf(component))) {
+    const cb = component.querySelector("input[type='checkbox']");
+    if (cb) return { cb, clickEl: cb.closest("label") || cb.parentElement || cb };
   }
   return null;
 }
@@ -1476,7 +1496,7 @@ function pickBestRegion(items, regionText) {
   const parts = regionText.split(",").map((s) => s.trim()).filter(Boolean);
   const missingProvince = parts.length === 2
     && /^(quận|huyện|thị xã|thị trấn|thành phố)\s+/i.test(parts[1]);
-  const targetWard = parts.length ? normalize(parts[0]) : "";
+  const targetWard = parts.length ? normalizeAdminName(parts[0]) : "";
   // Nếu chỉ có Phường + Quận/Huyện, coi Hồ Chí Minh là tỉnh/thành dự phòng
   // và vẫn lọc chính xác theo quận để tránh chọn nhầm phường cùng tên.
   const targetProvinceRaw = missingProvince ? "Hồ Chí Minh" : (parts.length ? parts[parts.length - 1] : "");
@@ -1527,25 +1547,19 @@ function pickBestRegion(items, regionText) {
     }
   }
 
-  // Trong các gợi ý cùng tỉnh + quận, chọn cái khớp phường nhất.
-  const wardWords = targetWard.split(" ").filter(Boolean);
-  const targetWardNum = districtNumberOf(parts[0] || "")
-    || ((parts[0] || "").match(/\b(\d+)\b/) || [])[1] || null;
-  let best = candidates[0], bestScore = -1;
-  for (const it of candidates) {
-    const itText = normalize(textOf(it));
-    let score = 0;
-    for (const w of wardWords) if (w.length >= 2 && itText.includes(w)) score++;
-    if (targetWard && itText.includes(targetWard)) score += 20; // khớp cả "phường tân mỹ"
-    // Phường dạng SỐ: cộng/trừ theo khớp số (tránh "Phường 9" vs "Phường 19").
-    if (targetWardNum) {
-      const itWardNum = (itText.match(/ph[uư][oơ]ng\s*(\d+)/) || [])[1] || null;
-      if (itWardNum === targetWardNum) score += 10;
-      else if (itWardNum && itWardNum !== targetWardNum) score -= 10;
-    }
-    if (score > bestScore) { bestScore = score; best = it; }
+  // Không chọn phường/thị trấn khác chỉ vì cùng tỉnh + huyện.
+  // So sánh riêng cụm địa giới đầu tiên; "Ngã Sáu" tương đương "Ngã 6".
+  const targetWardName = normalizeAdminName(parts[0] || "");
+  const wardMatches = candidates.filter((it) => {
+    const itemParts = textOf(it).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+    return itemParts.length > 0 && normalizeAdminName(itemParts[0]) === targetWardName;
+  });
+  if (!wardMatches.length) {
+    log(`pickBestRegion: có ${candidates.length} gợi ý cùng tỉnh/huyện nhưng không có phường/thị trấn khớp "${parts[0] || ""}" -> không chọn để tránh nhầm địa chỉ.`);
+    return null;
   }
-  log(`pickBestRegion: chọn "${textOf(best)}" (tỉnh="${targetProvince}", quận="${targetDistrictRaw}", score ${bestScore}).`);
+  const best = wardMatches[0];
+  log(`pickBestRegion: chọn "${textOf(best)}" (tỉnh="${targetProvince}", quận="${targetDistrictRaw}", phường khớp="${targetWardName}").`);
   return best;
 }
 
