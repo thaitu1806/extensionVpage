@@ -1367,6 +1367,15 @@ function buildRegionQueries(regionText) {
     return part;
   };
   const parts = (regionText || "").split(",").map((s) => expandAdminAbbreviation(s)).filter(Boolean);
+  // Một số danh mục địa giới của Nhanh.vn dùng chữ thay vì chữ số:
+  // "Ngã 5/6/7" cần được tìm bằng "Ngã Năm/Sáu/Bảy".
+  // Chỉ chuẩn hóa cụm "Ngã N" trong tên đơn vị hành chính, không sửa địa chỉ chi tiết.
+  const ngaNumberWords = { "5": "Năm", "6": "Sáu", "7": "Bảy" };
+  for (let i = 0; i < parts.length; i++) {
+    parts[i] = parts[i].replace(/(^|\\s)Ngã\\s*([567])(?=\\s|$)/i, (match, prefix, number) =>
+      `${prefix}Ngã ${ngaNumberWords[number]}`
+    );
+  }
   // Địa chỉ cũ tại Quận 2 / Quận 9 (TP.HCM) nay tra cứu theo Thành phố Thủ Đức.
   // Chỉ đổi đúng cụm hành chính độc lập, không thay các phần tên đường/địa chỉ chi tiết.
   for (let i = 0; i < parts.length; i++) {
