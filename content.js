@@ -1024,7 +1024,7 @@ function normalizeAdminName(value) {
     mot: "1", hai: "2", ba: "3", bon: "4", tu: "4",
     nam: "5", sau: "6", bay: "7", tam: "8", chin: "9", muoi: "10"
   };
-  return s.split(" ").map((word) => numberWords[word] || word).join(" ").replace(/\\s+/g, " ").trim();
+  return s.split(" ").map((word) => numberWords[word] || word).join(" ").replace(/\s+/g, " ").trim();
 }
 
 function sameAdminUnit(a, b) {
@@ -1372,7 +1372,7 @@ function buildRegionQueries(regionText) {
   // Chỉ chuẩn hóa cụm "Ngã N" trong tên đơn vị hành chính, không sửa địa chỉ chi tiết.
   const ngaNumberWords = { "5": "Năm", "6": "Sáu", "7": "Bảy" };
   for (let i = 0; i < parts.length; i++) {
-    parts[i] = parts[i].replace(/(^|\\s)Ngã\\s*([567])(?=\\s|$)/i, (match, prefix, number) =>
+    parts[i] = parts[i].replace(/(^|\s)Ngã\s*([567])(?=\s|$)/i, (match, prefix, number) =>
       `${prefix}Ngã ${ngaNumberWords[number]}`
     );
   }
