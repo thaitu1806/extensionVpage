@@ -1034,8 +1034,8 @@ function sameAdminUnit(a, b) {
 }
 
 function sameRegionSelection(currentText, targetText) {
-  const currentParts = String(currentText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
-  const targetParts = String(targetText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const currentParts = String(currentText || "").split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
+  const targetParts = String(targetText || "").split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
   if (!currentParts.length || !targetParts.length || currentParts.length !== targetParts.length) return false;
   for (let i = 0; i < targetParts.length; i++) {
     if (i === targetParts.length - 1) {
