@@ -110,7 +110,6 @@ function removeObsoleteHcmDistricts(region) {
 }
 function cleanAddress(addr) {
   return String(addr || "")
-    .replace(/\([^)]*\)/g, " ") // bỏ phần chú thích trong ngoặc đơn, ví dụ "(Nguyễn Văn Nghi chạy vô)"
     .replace(/,\s*(?:vi[eệ]t\s*nam|vn)\s*$/iu, "") // bỏ quốc gia ở cuối trước khi xác định cấp địa chỉ
     .replace(/\s*,\s*,\s*/g, ", ") // bỏ dấu phẩy rỗng ", ,"
     .replace(/\s{2,}/g, " ")
@@ -122,6 +121,32 @@ function cleanAddress(addr) {
 // Ví dụ: "Dc 304/10/12a tân kỳ..., Phường Tân Sơn Nhì, Hồ Chí Minh"
 //   -> address = "Dc 304/10/12a tân kỳ..."
 //      addressRegion = "Phường Tân Sơn Nhì, Hồ Chí Minh"
+// Chuyển nội dung trong ngoặc đơn của địa chỉ sang ghi chú khách hàng,
+ // thay vì làm mất thông tin chỉ đường do khách cung cấp.
+function moveAddressParenthesesToNote(data) {
+  if (!data || typeof data !== "object") return data;
+  const notes = [];
+  const cleanPart = (value) => String(value || "")
+    .replace(/\(([^()]*)\)/g, (_, note) => {
+      const text = String(note || "").trim();
+      if (text) notes.push(text);
+      return " ";
+    })
+    .replace(/\s*,\s*,\s*/g, ", ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*$/g, "")
+    .trim();
+  data.address = cleanPart(data.address);
+  data.addressRegion = cleanPart(data.addressRegion);
+  if (notes.length) {
+    const existing = String(data.note || "").trim();
+    const uniqueNotes = [...new Set(notes)];
+    data.note = [existing, ...uniqueNotes].filter(Boolean).join("; ");
+  }
+  return data;
+}
+
 function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
 
@@ -997,6 +1022,8 @@ async function runFill(tabId, options = {}) {
     }
   }
 
+  // Nội dung trong ngoặc đơn ở địa chỉ được giữ lại dưới dạng ghi chú khách hàng.
+  moveAddressParenthesesToNote(extracted);
   blog("Dữ liệu trích xuất:", JSON.stringify(extracted));
 
   // Nếu sản phẩm có COMBO cần tách, nhờ DeepSeek phân rã + map tên chuẩn theo CATALOG.
