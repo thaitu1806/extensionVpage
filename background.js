@@ -158,6 +158,39 @@ function normalizeAddressPlaceNames(data) {
   return data;
 }
 
+// Bổ sung tỉnh/thành Hồ Chí Minh khi khách chỉ ghi Phường + Quận/Huyện
+// thuộc địa bàn TP.HCM. Không tự thêm cho địa chỉ 1 cấp hoặc địa danh ngoài danh sách.
+function appendMissingHcmProvince(data) {
+  if (!data || typeof data !== "object") return data;
+  const hcmDistricts = [
+    "thanh pho thu duc", "quan 1", "quan 2", "quan 3", "quan 4", "quan 5",
+    "quan 6", "quan 7", "quan 8", "quan 9", "quan 10", "quan 11", "quan 12",
+    "quan binh thanh", "quan go vap", "quan phu nhuan", "quan tan binh",
+    "quan tan phu", "quan binh tan", "huyen binh chanh", "huyen can gio",
+    "huyen cu chi", "huyen hoc mon", "huyen nha be"
+  ];
+  const norm = (value) => String(value || "").toLowerCase()
+    .replace(/đ/g, "d").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[^a-z0-9\\s]/g, " ").replace(/\\s+/g, " ").trim();
+
+  for (const key of ["addressRegion", "addressRegion2"]) {
+    const value = String(data[key] || "").trim();
+    if (!value) continue;
+    const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length !== 2) continue;
+    const ward = norm(parts[0]);
+    const district = norm(parts[1]);
+    const hasWard = /^(phuong|xa|thi tran)\\s+/.test(ward);
+    const isHcmDistrict = hcmDistricts.includes(district);
+    const alreadyHasProvince = /ho chi minh|tp hcm|hcm|sai gon/.test(norm(value));
+    if (hasWard && isHcmDistrict && !alreadyHasProvince) {
+      data[key] = value + ", Hồ Chí Minh";
+      blog(`Đã bổ sung tỉnh/thành còn thiếu cho địa chỉ TP.HCM: ${key}="${data[key]}"`);
+    }
+  }
+  return data;
+}
+
 function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
 
@@ -1119,7 +1152,7 @@ async function runFill(tabId, options = {}) {
   }
 
   // Quy Nhơn được chuẩn hóa thành Qui Nhơn theo quy ước của shop.
-  normalizeAddressPlaceNames(extracted);
+  normalizeAddressPlaceNames(extracted);\n  appendMissingHcmProvince(extracted);
 
   // Xác định mã khuyến mại HVC theo địa chỉ: HCM (hoặc tỉnh lân cận cấu hình) hay ngoại tỉnh.
   const regionText = (extracted.addressRegion || "") + " " + (extracted.address || "");
