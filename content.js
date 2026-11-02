@@ -1231,8 +1231,11 @@ async function tryPickRegion(input, regionText) {
     const picked = hasValue(input) || getRegionSuggestionItems().length === 0;
     log(`tryPickRegion: sau click, input="${input.value}", placeholder="${input.getAttribute("placeholder") || ""}", picked=${picked}`);
     if (picked) {
-      if (isIncompleteThreeLevelSelection(input, regionText)) {
-        log("tryPickRegion: đã chọn nhưng thiếu phường; thử biến thể query tiếp theo.");
+      // Nếu API chỉ trả đúng 1 gợi ý hợp lệ (không phải riêng tỉnh/thành),
+      // pickBestRegion đã xác nhận đây là kết quả duy nhất: chọn luôn, không
+      // bắt buộc placeholder phải hiển thị đủ 3 cấp như địa chỉ đầu vào.
+      if (items.length > 1 && isIncompleteThreeLevelSelection(input, regionText)) {
+        log("tryPickRegion: kết quả nhiều gợi ý nhưng đã chọn thiếu phường; thử biến thể query tiếp theo.");
         continue;
       }
       return true;
@@ -1240,8 +1243,8 @@ async function tryPickRegion(input, regionText) {
     simulateClick(best);
     await sleep(600);
     if (hasValue(input) || getRegionSuggestionItems().length === 0) {
-      if (isIncompleteThreeLevelSelection(input, regionText)) {
-        log("tryPickRegion: sau click dự phòng vẫn thiếu phường; thử biến thể query tiếp theo.");
+      if (items.length > 1 && isIncompleteThreeLevelSelection(input, regionText)) {
+        log("tryPickRegion: sau click dự phòng, kết quả nhiều gợi ý vẫn thiếu phường; thử biến thể query tiếp theo.");
         continue;
       }
       return true;
@@ -1575,9 +1578,16 @@ function pickBestRegion(items, regionText) {
     log(`pickBestRegion: có ${candidates.length} gợi ý cùng tỉnh/huyện nhưng không có phường/thị trấn khớp "${parts[0] || ""}" -> không chọn để tránh nhầm địa chỉ.`);
     return null;
   }
-  const best = wardMatches[0];
-  log(`pickBestRegion: chọn "${textOf(best)}" (tỉnh="${targetProvince}", quận="${targetDistrictRaw}", phường khớp="${targetWardName}").`);
-  return best;
+  if (wardMatches.length === 1) {
+    const best = wardMatches[0];
+    log(`pickBestRegion: sau khi lọc còn đúng 1 phường/xã khớp -> chọn "${textOf(best)}" (tỉnh="${targetProvince}", quận="${targetDistrictRaw}").`);
+    return best;
+  }
+  if (wardMatches.length > 1) {
+    log(`pickBestRegion: còn ${wardMatches.length} kết quả cùng khớp phường/xã "${parts[0] || ""}" -> chưa chọn, thử truy vấn rút gọn/biến thể tiếp theo.`);
+    return null;
+  }
+  return null;
 }
 
 async function addProducts(products) {
