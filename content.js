@@ -1049,11 +1049,19 @@ function sameAdminUnit(a, b) {
 }
 
 function sameRegionSelection(currentText, targetText) {
-  const currentParts = String(currentText || "").split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
-  const targetParts = String(targetText || "").split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
-  if (!currentParts.length || !targetParts.length || currentParts.length !== targetParts.length) return false;
+  const currentParts = String(currentText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const targetParts = String(targetText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  if (!currentParts.length || !targetParts.length || currentParts.length < targetParts.length) return false;
+
+  // Địa chỉ đầu vào đôi khi chỉ có Phường + Quận/Huyện, trong khi Nhanh.vn
+  // hiển thị kết quả đầy đủ 3 cấp (Phường, Quận, Hồ Chí Minh). Khi đó chỉ
+  // xác minh các cấp mà dữ liệu đầu vào thực sự cung cấp.
+  const targetHasDistrict = targetParts.length >= 2
+    && /^(quận|huyện|thị xã|thị trấn|thành phố)\\s+/i.test(targetParts[1]);
+
   for (let i = 0; i < targetParts.length; i++) {
-    if (i === targetParts.length - 1) {
+    const isProvince = i === targetParts.length - 1 && !targetHasDistrict;
+    if (isProvince) {
       if (!sameProvinceName(currentParts[i], targetParts[i])) return false;
     } else if (!sameAdminUnit(currentParts[i], targetParts[i])) {
       return false;
