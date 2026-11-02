@@ -1564,6 +1564,14 @@ function pickBestRegion(items, regionText) {
     return itemParts.length > 0 && normalizeAdminName(itemParts[0]) === targetWardName;
   });
   if (!wardMatches.length) {
+    // Khi tỉnh + quận/huyện đã được lọc chính xác và chỉ còn đúng 1 kết quả,
+    // ưu tiên chọn kết quả duy nhất thay vì bỏ qua do khác biệt định dạng tên phường.
+    // Điều này xử lý các trường hợp API trả text xuống dòng/khác tiền tố "Phường".
+    if (targetProvince && targetDistrict && candidates.length === 1) {
+      const only = candidates[0];
+      log(`pickBestRegion: tỉnh + quận/huyện đã lọc còn đúng 1 gợi ý "${textOf(only)}" -> chọn duy nhất.`);
+      return only;
+    }
     log(`pickBestRegion: có ${candidates.length} gợi ý cùng tỉnh/huyện nhưng không có phường/thị trấn khớp "${parts[0] || ""}" -> không chọn để tránh nhầm địa chỉ.`);
     return null;
   }
