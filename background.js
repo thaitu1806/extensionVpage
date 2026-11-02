@@ -1152,7 +1152,8 @@ async function runFill(tabId, options = {}) {
   }
 
   // Quy Nhơn được chuẩn hóa thành Qui Nhơn theo quy ước của shop.
-  normalizeAddressPlaceNames(extracted);\n  appendMissingHcmProvince(extracted);
+  normalizeAddressPlaceNames(extracted);
+  appendMissingHcmProvince(extracted);
 
   // Xác định mã khuyến mại HVC theo địa chỉ: HCM (hoặc tỉnh lân cận cấu hình) hay ngoại tỉnh.
   const regionText = (extracted.addressRegion || "") + " " + (extracted.address || "");
