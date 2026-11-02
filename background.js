@@ -147,6 +147,17 @@ function moveAddressParenthesesToNote(data) {
   return data;
 }
 
+// Chuẩn hóa tên địa danh theo cách viết shop yêu cầu.
+function normalizeAddressPlaceNames(data) {
+  if (!data || typeof data !== "object") return data;
+  for (const key of ["address", "addressRegion", "addressRegion2"]) {
+    if (typeof data[key] === "string") {
+      data[key] = data[key].replace(/quy\s+nh[oơ]n/giu, "Qui Nhơn");
+    }
+  }
+  return data;
+}
+
 function splitAddress(full) {
   if (!full) return { address: "", addressRegion: "" };
 
@@ -1106,6 +1117,9 @@ async function runFill(tabId, options = {}) {
     extracted.addressRegion2 = buildTwoLevelRegion(extracted.addressRegion);
     blog(`Địa chỉ đã chuẩn (JS). 3 cấp="${extracted.addressRegion}", 2 cấp="${extracted.addressRegion2}"`);
   }
+
+  // Quy Nhơn được chuẩn hóa thành Qui Nhơn theo quy ước của shop.
+  normalizeAddressPlaceNames(extracted);
 
   // Xác định mã khuyến mại HVC theo địa chỉ: HCM (hoặc tỉnh lân cận cấu hình) hay ngoại tỉnh.
   const regionText = (extracted.addressRegion || "") + " " + (extracted.address || "");
