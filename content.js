@@ -1047,9 +1047,20 @@ function sameAdminUnit(a, b) {
   return !!na && !!nb && na === nb;
 }
 
+// Chuẩn hóa chuỗi địa giới khi khách viết thiếu dấu phẩy trước tỉnh/thành.
+// Ví dụ: "Thị trấn Lấp Vò, huyện Lấp Vò tỉnh Đồng Tháp"
+// -> "Thị trấn Lấp Vò, huyện Lấp Vò, tỉnh Đồng Tháp".
+function normalizeRegionText(value) {
+  return String(value || "")
+    .replace(/\\s+(tỉnh|thành phố)\\s+/gi, ", $1 ")
+    .replace(/\\s+(tp\\.?)\\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
+    .replace(/\\s*,\\s*/g, ", ")
+    .trim();
+}
+
 function sameRegionSelection(currentText, targetText) {
-  const currentParts = String(currentText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
-  const targetParts = String(targetText || "").split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const currentParts = normalizeRegionText(currentText).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const targetParts = normalizeRegionText(targetText).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
   if (!currentParts.length || !targetParts.length || currentParts.length < targetParts.length) return false;
 
   // Địa chỉ đầu vào đôi khi chỉ có Phường + Quận/Huyện, trong khi Nhanh.vn
@@ -1095,6 +1106,8 @@ function isIncompleteThreeLevelSelection(input, regionText) {
 }
 
 async function fillAddressRegion(region3, region2) {
+  region3 = normalizeRegionText(region3);
+  region2 = normalizeRegionText(region2 || region3);
   const input = findAddressRegionInput();
   if (!input) { log("fillAddressRegion: không thấy ô địa chỉ hành chính."); return false; }
 
@@ -1362,6 +1375,7 @@ async function toggleTwoLevelAddress() {
 // Tạo chuỗi tìm địa giới. ƯU TIÊN gõ KÈM LOẠI (Phường/Xã Tân Mỹ) trước,
 // vì tên trùng ở nhiều tỉnh (HCM có Phường Tân Mỹ, Tuyên Quang có Xã Tân Mỹ).
 function buildRegionQueries(regionText) {
+  regionText = normalizeRegionText(regionText);
   const stripType = (s) => (s || "")
     .replace(/^(phường|xã|thị trấn|thị xã|quận|huyện|thành phố|tỉnh|tp\.?)\s*/i, "")
     .trim();
@@ -1507,6 +1521,7 @@ function districtNumberOf(s) {
 }
 
 function pickBestRegion(items, regionText) {
+  regionText = normalizeRegionText(regionText);
   // Chỉ chọn thẳng khi có đúng 1 gợi ý nếu gợi ý đó không quá rộng.
   // Ví dụ query "Long Biên, Hà Nội" nhưng kết quả duy nhất là "Hà Nội":
   // đây chỉ là tỉnh/thành, không xác nhận được phần "Long Biên", nên phải bỏ
