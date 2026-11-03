@@ -273,10 +273,11 @@ document.addEventListener("DOMContentLoaded", load);
 $("save").addEventListener("click", save);
 
 
+
 function startVpageV2Scanner() {
   if (window.__vpageV2Scanner?.active) return { ok: true, alreadyRunning: true };
   const state = { startedAt: new Date().toISOString(), pageUrl: location.href, title: document.title, active: true, mutations: [] };
-  const clean = (v, n=500) => String(v || "").replace(/\\s+/g, " ").trim().slice(0,n);
+  const clean = (v, n=500) => String(v || "").replace(/\s+/g, " ").trim().slice(0,n);
   const visible = el => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
   const describe = el => {
     if (!el || el.nodeType !== 1) return null;
@@ -291,7 +292,7 @@ function startVpageV2Scanner() {
     const all = Array.from(document.querySelectorAll("body *")).filter(visible);
     const customers = [];
     document.querySelectorAll("b[class]").forEach(el => {
-      const m = String(el.className).match(/(?:^|\\s)customer-(\\d+)(?:\\s|$)/);
+      const m = String(el.className).match(/(?:^|\s)customer-(\d+)(?:\s|$)/);
       if (m) customers.push({ conversationId: m[1], name: clean(el.innerText,150), element: describe(el) });
     });
     const unique = [...new Map(customers.map(x => [x.conversationId,x])).values()];
@@ -318,7 +319,7 @@ function stopVpageV2Scanner() {
   const s=window.__vpageV2Scanner;
   if (!s) return {ok:false,error:"Không tìm thấy phiên quét. Hãy bắt đầu lại trên tab VPage."};
   s.active=false; s.observer?.disconnect();
-  const resources=performance.getEntriesByType("resource").filter(e=>/nhanh\\.vn/i.test(e.name)).map(e=>{
+  const resources=performance.getEntriesByType("resource").filter(e=>/nhanh\.vn/i.test(e.name)).map(e=>{
     let url=e.name; try {const u=new URL(e.name);url=u.origin+u.pathname;}catch(_){}
     return {url,initiatorType:e.initiatorType,durationMs:Math.round(e.duration),transferSize:e.transferSize||0};
   });
@@ -331,7 +332,7 @@ function stopVpageV2Scanner() {
 async function getVpageScanTab() {
   const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id) throw new Error("Không tìm thấy tab đang hoạt động.");
-  if (!/^https:\\/\\/(?:[^/]+\\.)?nhanh\\.vn\\//i.test(tab.url||"")) throw new Error("Hãy mở tab VPage (nhanh.vn) trước.");
+  if (!/^https:\/\/(?:[^/]+\.)?nhanh\.vn\//i.test(tab.url||"")) throw new Error("Hãy mở tab VPage (nhanh.vn) trước.");
   return tab;
 }
 async function startVpageScanFromOptions() {
