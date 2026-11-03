@@ -447,17 +447,26 @@ async function fillForm(data) {
       log(`-> GIỮ địa chỉ hành chính hiện tại: "${currentRegion}" trùng dữ liệu mới, bỏ qua tra cứu.`);
     } else {
       log(`-> CẬP NHẬT địa chỉ hành chính: cũ="${currentRegion}", mới="${data.addressRegion}" -> bắt đầu chọn lại.`);
+      _regionSelectedFromUniqueSuggestion = false;
       let okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-    let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-    let verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-    log(`Chọn địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
-    if (!verified) {
-      log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
-      okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-      verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-      verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-      log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
-    }
+      let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+      // Điều kiện bắt buộc: chỉ có đúng 1 gợi ý và đã click chọn thành công
+      // thì chấp nhận ngay, tuyệt đối không verify/fallback chọn lại.
+      let verified = okRegion && _regionSelectedFromUniqueSuggestion;
+      if (verified) {
+        log(`Chỉ có 1 gợi ý địa giới và đã chọn thành công -> CHẤP NHẬN NGAY, bỏ qua verify. Hiển thị="${verifiedRegion}"`);
+      } else {
+        verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
+        log(`Chọn địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      }
+      if (!verified && !_regionSelectedFromUniqueSuggestion) {
+        log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
+        _regionSelectedFromUniqueSuggestion = false;
+        okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+        verified = okRegion && (_regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion));
+        log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, duy nhất=${_regionSelectedFromUniqueSuggestion}, hiển thị="${verifiedRegion}"`);
+      }
       if (verified) done.push("tỉnh/xã");
       else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách. Khách cung cấp="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
     }
@@ -1052,15 +1061,16 @@ function sameAdminUnit(a, b) {
 // -> "Thị trấn Lấp Vò, huyện Lấp Vò, tỉnh Đồng Tháp".
 function normalizeRegionText(value) {
   return String(value || "")
-    .replace(/\\s+(tỉnh|thành phố)\\s+/gi, ", $1 ")
-    .replace(/\\s+(tp\\.?)\\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
-    .replace(/\\s*,\\s*/g, ", ")
+    // Chèn dấu phẩy trước cấp tỉnh/thành nếu người nhập viết liền sau huyện.
+    .replace(/\s+(tỉnh|thành phố)\s+/gi, ", $1 ")
+    .replace(/\s+(tp\.?)\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
+    .replace(/\s*,\s*/g, ", ")
     .trim();
 }
 
 function sameRegionSelection(currentText, targetText) {
-  const currentParts = normalizeRegionText(currentText).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
-  const targetParts = normalizeRegionText(targetText).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+  const currentParts = normalizeRegionText(currentText).split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
+  const targetParts = normalizeRegionText(targetText).split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
   if (!currentParts.length || !targetParts.length || currentParts.length < targetParts.length) return false;
 
   // Địa chỉ đầu vào đôi khi chỉ có Phường + Quận/Huyện, trong khi Nhanh.vn
@@ -1232,6 +1242,9 @@ async function fillAddressRegion(region3, region2) {
   return false;
 }
 
+// Được bật khi đúng 1 gợi ý đã được click thành công; caller phải bỏ qua verify.
+let _regionSelectedFromUniqueSuggestion = false;
+
 // Thử gõ các biến thể query và chọn gợi ý. Trả true nếu chọn được.
 async function tryPickRegion(input, regionText) {
   const variants = buildRegionQueries(regionText);
@@ -1266,6 +1279,7 @@ async function tryPickRegion(input, regionText) {
     const picked = hasValue(input) || getRegionSuggestionItems().length === 0;
     log(`tryPickRegion: sau click, input="${input.value}", placeholder="${input.getAttribute("placeholder") || ""}", picked=${picked}`);
     if (picked) {
+      if (items.length === 1) _regionSelectedFromUniqueSuggestion = true;
       // Nếu API chỉ trả đúng 1 gợi ý hợp lệ (không phải riêng tỉnh/thành),
       // pickBestRegion đã xác nhận đây là kết quả duy nhất: chọn luôn, không
       // bắt buộc placeholder phải hiển thị đủ 3 cấp như địa chỉ đầu vào.
@@ -1278,6 +1292,7 @@ async function tryPickRegion(input, regionText) {
     simulateClick(best);
     await sleep(600);
     if (hasValue(input) || getRegionSuggestionItems().length === 0) {
+      if (items.length === 1) _regionSelectedFromUniqueSuggestion = true;
       if (items.length > 1 && isIncompleteThreeLevelSelection(input, regionText)) {
         log("tryPickRegion: sau click dự phòng, kết quả nhiều gợi ý vẫn thiếu phường; thử biến thể query tiếp theo.");
         continue;
@@ -1600,7 +1615,7 @@ function pickBestRegion(items, regionText) {
   // So sánh riêng cụm địa giới đầu tiên; "Ngã Sáu" tương đương "Ngã 6".
   const targetWardName = normalizeAdminName(parts[0] || "");
   const wardMatches = candidates.filter((it) => {
-    const itemParts = textOf(it).split(/[,，\\n]/).map((s) => s.trim()).filter(Boolean);
+    const itemParts = textOf(it).split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
     return itemParts.length > 0 && normalizeAdminName(itemParts[0]) === targetWardName;
   });
   if (!wardMatches.length) {
