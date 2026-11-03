@@ -20,30 +20,23 @@ function hasRecentTrackingInbox(messages) {
 // Dừng hoàn toàn thông báo Telegram và tự lên đơn nếu 3 tin cuối đã là tin hậu xử lý/CSKH.
 // Danh sách tin được trả theo thứ tự cũ -> mới, nên slice(-3) là 3 tin mới nhất từ dưới lên.
 function hasRecentStopPhrase(messages, count = 3) {
-  const limit = Math.min(Math.max(parseInt(count, 10) || 3, 1), 10);
+  const limit = Math.min(Math.max(parseInt(count, 10) || 3, 1), 50);
   const recent = (Array.isArray(messages) ? messages : []).slice(-limit);
   const stopPhrases = ["theo doi van chuyen", "thong bao tu bep", "tran trong"];
-  // Một tin xác nhận đơn mới hơn phải thắng dấu tracking cũ hơn trong cùng cửa sổ.
-  // Ví dụ: tin cũ có link tracking, sau đó shop nhắn "lên đơn thành công" cho đơn mới.
-  const orderSuccessPhrases = [
-    "len don thanh cong",
-    "da len don",
-    "em len don cho minh",
-    "em gui don cho minh",
-    "tao don thanh cong",
-    "don hang da duoc tao"
-  ];
-  let lastStopIndex = -1;
-  let lastSuccessIndex = -1;
-  recent.forEach((message, index) => {
+  // Chỉ cần có một dấu hiệu hậu xử lý trong cửa sổ tin gần nhất là dừng.
+  // Không để các câu CSKH như "đã lên đơn thành công" xuất hiện sau đó
+  // vô hiệu hóa dấu tracking của đơn đã tạo.
+  const matched = recent.find((message) => {
     const text = normalizeTrackingText(typeof message === "string" ? message : (message?.text || ""));
-    if (stopPhrases.some((phrase) => text.includes(phrase))) lastStopIndex = index;
-    if (orderSuccessPhrases.some((phrase) => text.includes(phrase))) lastSuccessIndex = index;
+    return stopPhrases.some((phrase) => text.includes(phrase));
   });
-  // Chỉ chặn nếu dấu hiệu tracking/CSKH là sự kiện mới nhất so với xác nhận đơn.
-  return lastStopIndex >= 0 && lastStopIndex >= lastSuccessIndex;
-}
-/* ============== PARSE KHỐI XÁC NHẬN ĐƠN ============== */
+  if (matched) {
+    const text = typeof matched === "string" ? matched : (matched?.text || "");
+    blog(`hasRecentStopPhrase: phát hiện dấu hiệu đã xử lý trong ${recent.length} tin gần nhất: "${String(text).slice(0, 180)}".`);
+    return true;
+  }
+  return false;
+}/* ============== PARSE KHỐI XÁC NHẬN ĐƠN ============== */
 // Dạng mẫu (từ "Tin nhắn CSKH tự động"):
 //   Mã đơn hàng: 869721432
 //   Tên người nhận: Huỳnh Hiền
