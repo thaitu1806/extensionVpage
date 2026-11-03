@@ -271,3 +271,94 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 document.addEventListener("DOMContentLoaded", load);
 $("save").addEventListener("click", save);
+
+
+function startVpageV2Scanner() {
+  if (window.__vpageV2Scanner?.active) return { ok: true, alreadyRunning: true };
+  const state = { startedAt: new Date().toISOString(), pageUrl: location.href, title: document.title, active: true, mutations: [] };
+  const clean = (v, n=500) => String(v || "").replace(/\\s+/g, " ").trim().slice(0,n);
+  const visible = el => !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
+  const describe = el => {
+    if (!el || el.nodeType !== 1) return null;
+    const attrs = {};
+    for (const a of Array.from(el.attributes || [])) {
+      if (/^(value|style|srcdoc)$/i.test(a.name) || /token|cookie|authorization|secret|password/i.test(a.name)) continue;
+      attrs[a.name] = clean(a.value, 220);
+    }
+    return { tag: el.tagName.toLowerCase(), id: el.id || "", className: typeof el.className === "string" ? clean(el.className,250) : "", attributes: attrs, text: clean(el.innerText || el.textContent,650) };
+  };
+  const collect = () => {
+    const all = Array.from(document.querySelectorAll("body *")).filter(visible);
+    const customers = [];
+    document.querySelectorAll("b[class]").forEach(el => {
+      const m = String(el.className).match(/(?:^|\\s)customer-(\\d+)(?:\\s|$)/);
+      if (m) customers.push({ conversationId: m[1], name: clean(el.innerText,150), element: describe(el) });
+    });
+    const unique = [...new Map(customers.map(x => [x.conversationId,x])).values()];
+    const conv = all.filter(el => el.matches("b[class*='customer-'],[class*='conversation'],[class*='chat-item'],[class*='inbox-item'],[data-conversation-id]")).slice(0,100);
+    const msgs = all.filter(el => el.matches("[class*='message'],[class*='msg'],[data-message-id]")).slice(0,150);
+    const contacts = all.filter(el => el.matches("input,textarea,[class*='customer-info'],[class*='contact-info'],[class*='profile']")).slice(0,60).map(el => /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) ? {tag:el.tagName.toLowerCase(),id:el.id||"",name:el.getAttribute("name")||"",placeholder:el.getAttribute("placeholder")||"",type:el.getAttribute("type")||""} : describe(el));
+    return { capturedAt:new Date().toISOString(), url:location.href, title:document.title, counts:{visibleElements:all.length,conversationCandidates:conv.length,messageCandidates:msgs.length,customerIds:unique.length}, customerIds:unique, conversationCandidates:conv.map(describe), messageCandidates:msgs.map(describe), contactCandidates:contacts };
+  };
+  state.initial = collect();
+  state.observer = new MutationObserver(() => {
+    if (!state.active || state.mutations.length >= 35) return;
+    const snap = collect();
+    const sig = JSON.stringify(snap.counts)+"|"+snap.customerIds.map(x=>x.conversationId).join(",");
+    if (sig !== state.lastSig || Date.now()-(state.lastAt||0)>1500) {
+      state.mutations.push(snap); state.lastSig=sig; state.lastAt=Date.now();
+    }
+  });
+  state.observer.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["class","aria-label","data-conversation-id","data-message-id"]});
+  window.__vpageV2Scanner=state;
+  return {ok:true,startedAt:state.startedAt,counts:state.initial.counts};
+}
+
+function stopVpageV2Scanner() {
+  const s=window.__vpageV2Scanner;
+  if (!s) return {ok:false,error:"Không tìm thấy phiên quét. Hãy bắt đầu lại trên tab VPage."};
+  s.active=false; s.observer?.disconnect();
+  const resources=performance.getEntriesByType("resource").filter(e=>/nhanh\\.vn/i.test(e.name)).map(e=>{
+    let url=e.name; try {const u=new URL(e.name);url=u.origin+u.pathname;}catch(_){}
+    return {url,initiatorType:e.initiatorType,durationMs:Math.round(e.duration),transferSize:e.transferSize||0};
+  });
+  const unique=[...new Map(resources.map(x=>[x.url+"|"+x.initiatorType,x])).values()];
+  const report={scanner:"VPage V2 DOM Scanner",version:1,startedAt:s.startedAt,stoppedAt:new Date().toISOString(),pageUrl:s.pageUrl,pageTitle:s.title,note:"Chỉ thu DOM snapshots và URL Resource Timing. Không thu HTTP method, request payload, response body, cookie hoặc authorization.",initial:s.initial,mutationSnapshots:s.mutations,networkResources:unique};
+  delete window.__vpageV2Scanner;
+  return {ok:true,report};
+}
+
+async function getVpageScanTab() {
+  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+  if (!tab?.id) throw new Error("Không tìm thấy tab đang hoạt động.");
+  if (!/^https:\\/\\/(?:[^/]+\\.)?nhanh\\.vn\\//i.test(tab.url||"")) throw new Error("Hãy mở tab VPage (nhanh.vn) trước.");
+  return tab;
+}
+async function startVpageScanFromOptions() {
+  const st=$("v2ScanStatus"); st.textContent="Đang khởi tạo scanner..."; st.className="status";
+  try {
+    const tab=await getVpageScanTab();
+    const out=await chrome.scripting.executeScript({target:{tabId:tab.id},world:"MAIN",func:startVpageV2Scanner});
+    const r=out?.[0]?.result; if(!r?.ok) throw new Error("Không khởi tạo được scanner.");
+    $("v2ScanStart").disabled=true; $("v2ScanStop").disabled=false;
+    st.textContent=r.alreadyRunning?"Scanner đang chạy.":"Đã bắt đầu quét. Hãy mở và chuyển qua một vài hội thoại VPage.";
+    st.className="status ok";
+  } catch(e) {st.textContent="Lỗi: "+e.message;st.className="status err";}
+}
+async function stopVpageScanFromOptions() {
+  const st=$("v2ScanStatus"); st.textContent="Đang tổng hợp JSON...";st.className="status";
+  try {
+    const tab=await getVpageScanTab();
+    const out=await chrome.scripting.executeScript({target:{tabId:tab.id},world:"MAIN",func:stopVpageV2Scanner});
+    const r=out?.[0]?.result;if(!r?.ok)throw new Error(r?.error||"Không lấy được dữ liệu.");
+    const blob=new Blob([JSON.stringify(r.report,null,2)],{type:"application/json;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
+    a.download="vpage-v2-scan-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $("v2ScanStart").disabled=false;$("v2ScanStop").disabled=true;
+    st.textContent="Đã xuất JSON: "+(1+r.report.mutationSnapshots.length)+" snapshot DOM, "+r.report.networkResources.length+" URL tài nguyên.";
+    st.className="status ok";
+  } catch(e) {st.textContent="Lỗi: "+e.message;st.className="status err";}
+}
+$("v2ScanStart").addEventListener("click",startVpageScanFromOptions);
+$("v2ScanStop").addEventListener("click",stopVpageScanFromOptions);
