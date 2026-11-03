@@ -175,6 +175,19 @@
 
     <div class="divider"></div>
 
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">VPage V2 — Quét giao diện & API</h1>
+    <p class="desc">Quét DOM trên tab VPage đang mở và ghi nhận URL tài nguyên/API được tải trong lúc bạn thao tác. Scanner chỉ đọc dữ liệu, không gửi tin nhắn, không đổi trạng thái và không tạo đơn.</p>
+    <div class="account-box" style="background:#fff7ed;border-color:#fed7aa;">
+      <b>Lưu ý:</b> Báo cáo có thể chứa tên khách, nội dung tin nhắn và ID hội thoại. Hãy kiểm tra JSON trước khi chia sẻ. Scanner không đọc JWT, Cookie, Authorization hoặc giá trị input/password.
+    </div>
+    <div class="row">
+      <div><button id="v2ScanStart" style="background:#16a34a;">Bắt đầu quét</button></div>
+      <div><button id="v2ScanStop" style="background:#64748b;" disabled>Dừng &amp; xuất JSON</button></div>
+    </div>
+    <div class="status" id="v2ScanStatus">Chưa bắt đầu quét.</div>
+    <div class="hint">Mở VPage V2, bấm Bắt đầu quét, lần lượt mở 2–3 hội thoại mẫu và xem thông tin khách hàng. Sau đó bấm Dừng &amp; xuất JSON.</div>
+
     <label for="catalog">Danh mục sản phẩm chuẩn (CATALOG)</label>
     <textarea id="catalog" placeholder="Mỗi dòng 1 sản phẩm, ví dụ:&#10;Chả cốm Bếp Cô Như 500g&#10;Nem rán hải sản 10 cái&#10;Giò lụa 1kg"></textarea>
     <div class="hint">AI sẽ ánh xạ tên khách nói → tên chuẩn trong danh sách này. Để trống nếu không cần chuẩn hóa.</div>
