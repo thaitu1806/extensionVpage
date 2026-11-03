@@ -237,8 +237,7 @@ function findShopOrderMessage(messages, lastN = 3) {
   for (let i = recent.length - 1; i >= 0; i--) {
     const m = recent[i];
     if (m.role !== "shop" || !isOrderConfirmation(m.text)) continue;
-    // ĐÃ LÊN ĐƠN: khối có "Theo dõi vận chuyển" (mã vận đơn) -> bỏ qua, không báo.
-    if (/Theo dõi vận chuyển/i.test(m.text)) continue;
+    // Trả cả template có tracking để background.js xét thứ tự tin nhắn mới nhất -> cũ nhất.
     return m.text;
   }
   return "";
@@ -2324,7 +2323,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg?.type === "COLLECT_RECENT_MESSAGES") {
     const all = readAllMessages();
-    const lastN = Math.max(1, Math.min(Number(msg.lastN) || 3, 10));
+    const lastN = Math.max(1, Math.min(Number(msg.lastN) || 3, 50));
     sendResponse({
       messages: all.slice(-lastN).map((m) => ({
         role: m.role,
