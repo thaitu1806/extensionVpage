@@ -330,10 +330,17 @@ function stopVpageV2Scanner() {
 }
 
 async function getVpageScanTab() {
-  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
-  if (!tab?.id) throw new Error("Không tìm thấy tab đang hoạt động.");
-  if (!/^https:\/\/(?:[^/]+\.)?nhanh\.vn\//i.test(tab.url||"")) throw new Error("Hãy mở tab VPage (nhanh.vn) trước.");
-  return tab;
+  // Tìm tab VPage đang mở, không phụ thuộc tab Cấu hình đang được focus.
+  const tabs = await chrome.tabs.query({ currentWindow: true });
+  const vpageTabs = tabs.filter(tab => {
+    try { return new URL(tab.url || "").hostname.toLowerCase() === "vpage.nhanh.vn"; }
+    catch (_) { return false; }
+  });
+  if (!vpageTabs.length) {
+    throw new Error("Chưa tìm thấy tab VPage. Hãy mở https://vpage.nhanh.vn rồi quay lại Cấu hình.");
+  }
+  // Ưu tiên tab VPage đang active; nếu không có thì lấy tab VPage đầu tiên.
+  return vpageTabs.find(tab => tab.active) || vpageTabs[0];
 }
 async function startVpageScanFromOptions() {
   const st=$("v2ScanStatus"); st.textContent="Đang khởi tạo scanner..."; st.className="status";
