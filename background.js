@@ -2035,19 +2035,48 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
           const name = (el.querySelector("b.name")?.innerText
             || el.querySelector(".name")?.innerText || "").trim();
 
+          // Lấy định danh thật của box đang mở, không dùng SĐT/tên làm conversation ID.
+          const attrs = {};
+          for (const attr of Array.from(el.attributes || [])) attrs[attr.name] = attr.value;
+          const data = el.dataset || {};
+          const anchor = el.querySelector("a[href]");
+          const href = anchor?.getAttribute("href") || "";
+          const params = new URL(href, location.origin).searchParams;
+          const rawId = data.conversationId || data.cid || data.id
+            || attrs["data-conversation-id"] || attrs["data-cid"] || attrs["data-id"]
+            || (el.id && /^\\d+(?:_\\d+)?$/.test(el.id) ? el.id : "");
+          const composite = String(rawId || "").match(/^(\\d+)_(\\d+)$/);
+          const conversationId = composite ? composite[2] : String(rawId || "");
+          const fanpageId = data.fanpageId || data.pageId || data.fid
+            || attrs["data-fanpage-id"] || attrs["data-page-id"] || attrs["data-fid"]
+            || params.get("fanpageId") || params.get("pageId")
+            || (composite ? composite[1] : "");
+          const channel = Number(data.channel || attrs["data-channel"] || params.get("channel") || 1) || 1;
+
           el.scrollIntoView({ block: "center" });
           const target = el.querySelector(".info") || el;
           target.click();
 
-          return { ok: true, count: items.length, name };
+          return {
+            ok: true, count: items.length, name,
+            conversationId, fanpageId, channel,
+            rawId: String(rawId || ""),
+            itemAttributes: attrs
+          };
         },
         args: []
       });
 
       const r = results && results[0] && results[0].result;
       if (r && r.ok) {
-        blog(`AutoFill: đã click box đầu tiên "${r.name}" (trong ${r.count} box).`);
-        return r.name || "(không tên)";
+        blog(`AutoFill: đã click box đầu tiên "${r.name}" (trong ${r.count} box); conversationId="${r.conversationId || ""}", fanpageId="${r.fanpageId || ""}", channel=${r.channel || 1}, rawId="${r.rawId || ""}".`);
+        return {
+          name: r.name || "(không tên)",
+          conversationId: r.conversationId || "",
+          fanpageId: r.fanpageId || "",
+          channel: r.channel || 1,
+          rawId: r.rawId || ""
+        };
       }
     } catch (e) {
       blog("openFirstConversation lỗi:", e.message);
@@ -2055,6 +2084,106 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
     await new Promise((r) => setTimeout(r, 500));
   }
   return "";
+}
+
+// Chuyển đúng hội thoại vừa lên đơn về Unread trước khi đóng tab tự động.
+async function markConversationUnread(tabId, conversation) {
+  if (!conversation) {
+    blog("Unread: thiếu thông tin box; bỏ qua cập nhật.");
+    return { ok: false, reason: "missing-conversation" };
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: async function (ctx) {
+        // Tìm object xác thực trong Local Storage; tuyệt đối không log JWT.
+        let auth = null;
+        let authKey = "";
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          try {
+            const value = JSON.parse(localStorage.getItem(key));
+            if (value && typeof value.jwt === "string" && value.jwt) {
+              auth = value;
+              authKey = key;
+              break;
+            }
+          } catch (_) {}
+        }
+        if (!auth?.jwt) return { ok: false, reason: "jwt-not-found" };
+
+        const rawId = String(ctx.rawId || "");
+        const conversationId = String(ctx.conversationId || "");
+        let fanpageId = String(ctx.fanpageId || "");
+        let apiId = "";
+
+        // API nhận id dạng fanpageId_conversationId.
+        const composite = rawId.match(/^(\\d+)_(\\d+)$/);
+        if (composite) {
+          fanpageId = fanpageId || composite[1];
+          apiId = rawId;
+        } else if (fanpageId && conversationId) {
+          apiId = fanpageId + "_" + conversationId;
+        }
+
+        if (!apiId || !fanpageId) {
+          return {
+            ok: false,
+            reason: "conversation-id-incomplete",
+            rawId,
+            conversationId,
+            fanpageId
+          };
+        }
+
+        const body = new URLSearchParams({
+          id: apiId,
+          status: "1",
+          fanpageId,
+          channel: String(ctx.channel || 1)
+        });
+
+        const response = await fetch("https://vpage.nhanh.vn/chat/updateviewconversation", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Accept": "application/json, text/plain, */*",
+            "Authorization": "Bearer " + auth.jwt,
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+          },
+          body: body.toString()
+        });
+
+        let result = null;
+        try { result = await response.json(); }
+        catch (_) { result = await response.text().catch(() => ""); }
+
+        return {
+          ok: response.ok,
+          httpStatus: response.status,
+          apiId,
+          fanpageId,
+          channel: Number(ctx.channel || 1),
+          authKey,
+          response: result
+        };
+      },
+      args: [conversation]
+    });
+
+    const result = results?.[0]?.result || { ok: false, reason: "no-script-result" };
+    if (result.ok) {
+      blog(`Unread: đã gửi cập nhật box "${conversation.name || ""}" -> id="${result.apiId}", HTTP ${result.httpStatus}, response=${JSON.stringify(result.response)}.`);
+    } else {
+      blog("Unread: không cập nhật được trạng thái:", JSON.stringify(result));
+    }
+    return result;
+  } catch (e) {
+    blog("Unread: lỗi gọi updateviewconversation:", e.message);
+    return { ok: false, reason: e.message };
+  }
 }
 
 // Mở/điều hướng tab vpage tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
@@ -2070,6 +2199,7 @@ async function fillOrderByPhone(phone) {
   blog(`AutoFill: orderTabMode=${mode}; tạo tab đơn mới.`);
   const tab = await chrome.tabs.create({ url: targetUrl, active: activateImmediately });
   let res;
+  let conversation = null;
   try {
     await waitTabComplete(tab.id, 20000);
     if (mode === "switch") {
@@ -2078,8 +2208,8 @@ async function fillOrderByPhone(phone) {
     }
     await new Promise((r) => setTimeout(r, 4000));
 
-    const opened = await openFirstConversation(tab.id, phone);
-    if (!opened) throw new Error(`Không tìm thấy box hội thoại nào cho SĐT ${phone}.`);
+    conversation = await openFirstConversation(tab.id, phone);
+    if (!conversation) throw new Error(`Không tìm thấy box hội thoại nào cho SĐT ${phone}.`);
     await new Promise((r) => setTimeout(r, 3000));
 
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
@@ -2087,8 +2217,14 @@ async function fillOrderByPhone(phone) {
     blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
     return res;
   } finally {
-    // Không giữ tab để review: luôn tự đóng tab đơn sau khi xử lý xong,
-    // kể cả khi cần review, lỗi lưu, hoặc không tìm thấy hội thoại.
+    // Cập nhật Unread ngay trước khi đóng tab; không dùng alert/confirm.
+    if (conversation) {
+      await markConversationUnread(tab.id, conversation);
+    } else {
+      blog("Unread: chưa xác định được conversation ID nên không gửi cập nhật.");
+    }
+
+    // Không giữ tab để review: luôn tự đóng tab đơn sau khi xử lý xong.
     try {
       await chrome.tabs.remove(tab.id);
       blog(`AutoFill webhook: luôn tự đóng tab đơn #${tab.id}; không giữ tab review.`);
