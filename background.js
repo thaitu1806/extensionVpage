@@ -1847,13 +1847,49 @@ async function runScanCycle() {
       continue;
     }
 
-    if (hasRecentStopPhrase(recentMessages, lastN)) {
-      blog(`Quét: "${conv.name}" - tin gần nhất có "Theo dõi vận chuyển", "Thông báo từ Bếp" hoặc "Trân trọng"; dừng, không gửi Telegram và không tự lên đơn.`);
-      continue;
+    // 4) Duyệt tin SHOP từ MỚI NHẤT -> CŨ NHẤT.
+    // Gặp tracking trước template => đơn đã xử lý, bỏ qua.
+    // Gặp template trước tracking => đây là template mới cần notify.
+    // Tin khách và tin shop thông thường không làm thay đổi quyết định.
+    let latestOrderSignal = "";
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const message = recentMessages[i];
+      if (message?.role !== "shop") continue;
+
+      const messageText = String(message.text || "");
+      const normalizedMessage = normalizeTrackingText(messageText);
+      const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(messageText);
+      const isTracking = normalizedMessage.includes("theo doi van chuyen")
+        || normalizedMessage.includes("ma van don")
+        || /\btracking\b/i.test(messageText)
+        || hasTrackingLink;
+
+      if (isTracking) {
+        latestOrderSignal = "tracking";
+        blog("Quét: " + conv.name + " - gặp tin tracking mới nhất trước template; bỏ qua notify và tự lên đơn.");
+        break;
+      }
+
+      const isOrderTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(messageText) && /(Số điện thoại|Điện thoại)/i.test(messageText))
+        || (/Mã đơn hàng/i.test(messageText) && /(Số điện thoại|Điện thoại)/i.test(messageText))
+        || (/(Số điện thoại|Điện thoại)/i.test(messageText)
+          && /Sản ?phẩm\s*:/i.test(messageText)
+          && (/\d+\s*x\s*\S/i.test(messageText)
+            || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(messageText)));
+
+      if (isOrderTemplate) {
+        latestOrderSignal = "template";
+        blog("Quét: " + conv.name + " - gặp template lên đơn trước tin tracking cũ; tiếp tục notify.");
+        break;
+      }
     }
 
-    // 4) Lấy khối đơn trong N tin GẦN NHẤT bên SHOP.
-    const orderText = await getShopOrderText(tab.id, lastN);
+    if (latestOrderSignal === "tracking") continue;
+
+    // 5) Lấy template SHOP trong N tin gần nhất. Chỉ lấy khi template là tín hiệu mới nhất.
+    const orderText = latestOrderSignal === "template"
+      ? await getShopOrderText(tab.id, lastN)
+      : "";
     if (!orderText) {
       // Nếu 3 tin gần nhất chưa có template chốt đơn và cũng chưa có tracking,
       // vẫn báo Telegram khi khách đã gửi SĐT + địa chỉ để không bỏ sót lead.
