@@ -1349,6 +1349,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   }
+  if (msg?.type === "TEST_TRACKING_LINK") {
+    const value = String(msg.url || "").trim();
+    const normalized = normalizeTrackingText(value);
+    const isNhanhTrackingUrl = /^https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(value);
+    const hasTrackingKeyword = normalized.includes("theo doi van chuyen")
+      || normalized.includes("ma don hang")
+      || normalized.includes("ma van don")
+      || /\\btracking\\b/i.test(value);
+    const detected = isNhanhTrackingUrl || hasTrackingKeyword;
+    blog(`[LINK TEST] input="${value.slice(0, 300)}" => detected=${detected}, nhanhTrackingUrl=${isNhanhTrackingUrl}, keyword=${hasTrackingKeyword}`);
+    sendResponse({ ok: true, detected, isNhanhTrackingUrl, hasTrackingKeyword,
+      message: detected ? "Đã nhận diện dấu hiệu tracking/mã đơn: theo logic hiện tại sẽ bỏ qua notify và tự lên đơn." : "Chưa nhận diện được dấu hiệu tracking/mã đơn." });
+    return false;
+  }
   if (msg?.type === "RUN_TEST_ORDER") {
     (async () => {
       const tabs = await chrome.tabs.query({ url: "https://vpage.nhanh.vn/*" });
@@ -1819,6 +1833,22 @@ async function runScanCycle() {
     // Nếu gặp tracking hoặc tin hệ thống/CSKH của Bếp thì bỏ qua hội thoại này ngay.
     const recentMessages = await getRecentConversationMessages(tab.id, lastN);
 
+    // DEBUG: ghi lại chính xác dữ liệu content.js trả về cho background.
+    blog(`[SCAN DEBUG] "${conv.name}" | yêu cầu=${lastN} | nhận=${recentMessages.length}`);
+    recentMessages.forEach((m, index) => {
+      const rawText = String(m?.text || "");
+      const normalized = normalizeTrackingText(rawText);
+      const trackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(rawText);
+      const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don"].filter(x => normalized.includes(x));
+      const isTrackingDebug = trackingWords.length > 0 || trackingLink || /\\btracking\\b/i.test(rawText);
+      const isTemplateDebug = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
+        || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
+        || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\\s*:/i.test(rawText)
+          && (/\\d+\\s*x\\s*\\S/i.test(rawText) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(rawText)));
+      blog(`[SCAN DEBUG] #${index + 1} role=${m?.role || "?"} len=${rawText.length} tracking=${isTrackingDebug} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplateDebug} text="${rawText.replace(/\\s+/g, " ").slice(0, 260)}"`);
+    });
+    if (!recentMessages.length) blog(`[SCAN DEBUG] "${conv.name}" không nhận được tin nhắn nào từ content.js.`);
+
     // Xử lý riêng mẫu shop báo giao hàng thất bại trước quy tắc chặn "Trân trọng".
     // Chỉ xét tin mới nhất; đọc số bưu tá từ trang tracking rồi nhắn lại trong đúng box.
     const latestMessage = recentMessages[recentMessages.length - 1];
@@ -1907,13 +1937,18 @@ async function runScanCycle() {
       }
     }
 
-    if (latestOrderSignal === "tracking") continue;
+    blog(`[SCAN DEBUG] "${conv.name}" quyết định latestOrderSignal=${latestOrderSignal || "none"}.`);
+    if (latestOrderSignal === "tracking") {
+      blog(`[SCAN DEBUG] "${conv.name}" => SKIP_NOTIFY_AND_AUTO_ORDER (tracking/order-id đã tồn tại).`);
+      continue;
+    }
 
     // 5) Lấy template SHOP trong N tin gần nhất. Chỉ lấy khi template là tín hiệu mới nhất.
     const orderText = latestOrderSignal === "template"
       ? await getShopOrderText(tab.id, lastN)
       : "";
     if (!orderText) {
+      blog(`[SCAN DEBUG] "${conv.name}" orderText rỗng; chuyển sang kiểm tra fallback contact.`);
       // Nếu 3 tin gần nhất chưa có template chốt đơn và cũng chưa có tracking,
       // vẫn báo Telegram khi khách đã gửi SĐT + địa chỉ để không bỏ sót lead.
       const contact = findCustomerContactMessage(recentMessages);
@@ -1922,6 +1957,7 @@ async function runScanCycle() {
         continue;
       }
 
+      blog(`[SCAN DEBUG] "${conv.name}" FALLBACK_NOTIFY phone=${contact.phone}; text="${String(contact.text || "").replace(/\\s+/g, " ").slice(0, 220)}"`);
       const fallbackKey = "contact:" + contact.phone;
       if (notified[fallbackKey]) {
         blog(`Quét: "${conv.name}" - cảnh báo khách ${contact.phone} đã gửi trước đó, bỏ qua.`);
