@@ -995,8 +995,29 @@ async function runFill(tabId, options = {}) {
   let initialMessages = [];
   let extracted = null;
 
+  // Test theo box: dùng đúng danh sách raw bubble đã được BOX TEST xác minh.
+  // Chỉ điền form ở mode "test"; content.js tuyệt đối không bấm Lưu ở mode này.
+  if (Array.isArray(options.testMessages)) {
+    blog("BOX AUTO-ORDER TEST: dùng raw messages từ hội thoại đang test.");
+    collected.messages = options.testMessages.map((m) => ({
+      role: m?.role || "customer",
+      sender: m?.sender || "",
+      text: String(m?.text || m?.rawText || "")
+    })).filter((m) => m.text.trim());
+    collected.orderConfirmation = String(options.orderText || "").trim();
+    if (!collected.messages.length) throw new Error("Box không có nội dung tin nhắn để phân tích.");
+    if (hasRecentStopPhrase(collected.messages, msgCount)) {
+      throw new Error("Tin nhắn gần nhất có dấu hiệu tracking/tin CSKH; đã dừng test, không điền form.");
+    }
+    initialMessages = collected.messages.map((m) => m.text);
+    initialOrderTemplate = collected.orderConfirmation;
+    if (collected.orderConfirmation) {
+      extracted = parseOrderConfirmation(collected.orderConfirmation);
+      if (!extracted) blog("BOX AUTO-ORDER TEST: parse template không thành công; sẽ thử DeepSeek nếu có API token.");
+      else blog("BOX AUTO-ORDER TEST: parse template thành công.");
+    }
   // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
-  if (options.orderText) {
+  } else if (options.orderText) {
     blog("Manual test: parse nội dung đơn được dán.");
     extracted = parseOrderConfirmation(options.orderText, true);
     if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
@@ -1437,6 +1458,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       blog("[BOX TEST] KẾT THÚC: không gọi tgSend/processScanNotification/fillOrderByPhone; không thay đổi storage.");
       return { ok: true, summary: "Đã mô phỏng luồng template/parse/notify/auto-order trong console; không phát sinh thao tác thật." };
     })().then(sendResponse).catch(e => { blog("[BOX TEST] LỖI: " + (e?.stack || e?.message || e)); sendResponse({ ok: false, error: e.message }); });
+    return true;
+  }
+  if (msg?.type === "TEST_VPAGE_AUTO_ORDER") {
+    (async () => {
+      const tabId = Number(msg.tabId);
+      if (!Number.isInteger(tabId)) throw new Error("tabId không hợp lệ.");
+      const cfg = await chrome.storage.local.get({ tgMsgCount: 3 });
+      const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
+      blog("========== [VPage AUTO-ORDER BOX TEST] BẮT ĐẦU ==========");
+      blog("[AUTO-ORDER TEST] Chế độ TEST: chỉ trích xuất và điền form; KHÔNG lưu đơn/Telegram/nhắn khách.");
+      const recentMessages = await getRecentConversationMessages(tabId, lastN);
+      if (!recentMessages.length) throw new Error("Không đọc được tin nhắn trong box.");
+      recentMessages.forEach((m, i) => blog(
+        `[AUTO-ORDER TEST] #${i + 1} role=${m.role || "?"} text="${String(m.rawText || m.text || "").replace(/\\s+/g, " ").slice(0, 400)}"`
+      ));
+      const latestMessage = recentMessages[recentMessages.length - 1];
+      if (isLatestUndeliveredMessage(latestMessage)) {
+        throw new Error("Box có tin giao hàng thất bại mới nhất; test lên đơn đã dừng.");
+      }
+      let signal = "";
+      let orderText = "";
+      for (let i = recentMessages.length - 1; i >= 0; i--) {
+        const m = recentMessages[i];
+        if (m?.role !== "shop") continue;
+        const t = String(m.rawText || m.text || "");
+        const n = normalizeTrackingText(t);
+        const tracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
+          || n.includes("ma van don") || n.includes("thong bao tu bep")
+          || n.includes("tran trong") || /\\btracking\\b/i.test(t)
+          || /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
+        if (tracking) { signal = "tracking"; break; }
+        const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+          || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
+            && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
+        if (template) { signal = "template"; orderText = t; break; }
+      }
+      blog(`[AUTO-ORDER TEST] latestOrderSignal=${signal || "none"}`);
+      if (signal === "tracking") throw new Error("Tin tracking/hậu xử lý mới hơn template; không lên đơn.");
+      if (!signal) throw new Error("Không tìm thấy template xác nhận đơn trong các tin gần nhất.");
+      blog("[AUTO-ORDER TEST] Template được chọn: " + orderText.slice(0, 1200));
+      const result = await runFill(tabId, { mode: "test", testMessages: recentMessages, orderText });
+      blog("[AUTO-ORDER TEST] KẾT QUẢ: " + JSON.stringify(result));
+      blog("[AUTO-ORDER TEST] Hoàn tất. Form được giữ nguyên để kiểm tra; không bấm Lưu.");
+      return result;
+    })().then(sendResponse).catch(e => {
+      blog("[AUTO-ORDER TEST] DỪNG/LỖI: " + (e?.stack || e?.message || e));
+      sendResponse({ ok: false, error: e.message });
+    });
     return true;
   }
   if (msg?.type === "TEST_TRACKING_LINK") {
