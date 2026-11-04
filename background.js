@@ -150,8 +150,8 @@ function normalizeAddressPlaceNames(data) {
   const parts = region3.split(",").map((part) => part.trim()).filter(Boolean);
   if (!parts.length) return data;
 
-  const ward = parts[0].replace(/^(?:phường|p\\.?)[ ]*/iu, "").trim();
-  const normalizedWard = ward.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  const ward = parts[0].replace(/^(?:phường|p\.?)[ ]*/iu, "").trim();
+  const normalizedWard = ward.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const quyNhonNewWards = new Set([
     "quy nhon",
     "quy nhon dong",
@@ -168,7 +168,7 @@ function normalizeAddressPlaceNames(data) {
   }
 
   if (parts.length >= 3) {
-    data.addressRegion = region3.replace(/quy\\s+nh[oơ]n/giu, "Qui Nhơn");
+    data.addressRegion = region3.replace(/quy\s+nh[oơ]n/giu, "Qui Nhơn");
   }
   return data;
 }
