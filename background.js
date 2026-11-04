@@ -1731,7 +1731,7 @@ async function getTelegramConversationLink(tabId, conv) {
       const cid = String(context.cid || "").trim();
       if (!/^\\d+_\\d+$/.test(cid)) {
         blog(`Telegram link: V2 chưa có CID composite hợp lệ cho "${conv?.name || ""}".`);
-        return "";
+        return "__V2_NO_CID__";
       }
       return `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
     }
@@ -2193,13 +2193,13 @@ async function runScanCycle() {
         "",
         "ℹ️ Có thể AI chưa kịp tạo đơn hoặc chốt đơn tự động bị lỗi. Vui lòng kiểm tra hội thoại."
       ].filter(Boolean).join("\n");
-      const fallbackUrl = v2ConversationUrl || `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`;
+      const fallbackUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`);
       const fallbackButtons = [];
       // Có SĐT và đã cấu hình Worker thì hiện nút Lên đơn như thông báo đơn chuẩn.
       if (contact.phone && cfg.workerUrl) {
         fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${contact.phone}` }]);
       }
-      fallbackButtons.push([{ text: "💬 Mở hội thoại", url: fallbackUrl }]);
+      if (fallbackUrl) fallbackButtons.push([{ text: "💬 Mở hội thoại", url: fallbackUrl }]);
       await processScanNotification({
         kind: "fallback",
         key: fallbackKey,
@@ -2229,9 +2229,9 @@ async function runScanCycle() {
     // Link mở đúng hội thoại để lên đơn (theo SĐT). Dùng cho nút "Lên đơn" và
     // sau này cho trigger lên đơn tự động.
     const phone = parsed && parsed.phone ? parsed.phone : "";
-    const orderUrl = v2ConversationUrl || (phone
+    const orderUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || (phone
       ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`
-      : "");
+      : ""));
 
     // Gửi ĐẦY ĐỦ: trường đã parse + nguyên văn khối đơn + link lên đơn.
     const text = formatOrderForTelegram(parsed, conv.name, orderText, orderUrl);
