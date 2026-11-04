@@ -1371,7 +1371,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       blog(`[BOX TEST] Đọc được ${recentMessages.length}/${lastN} tin sau ${Math.round((Date.now() - waitStartedAt) / 1000)} giây chờ.`);
       recentMessages.forEach((m, index) => {
-        const rawText = String(m?.text || "");
+        const rawText = String(m?.rawText || m?.text || "");
+        const extractedText = String(m?.extractedText || "");
         const normalized = normalizeTrackingText(rawText);
         const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
         const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
@@ -1392,7 +1393,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       for (let i = recentMessages.length - 1; i >= 0; i--) {
         const m = recentMessages[i];
         if (m?.role !== "shop") continue;
-        const t = String(m.text || "");
+        const t = String(m.rawText || m.text || "");
         const n = normalizeTrackingText(t);
         const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
         const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang") || n.includes("ma van don")
@@ -1643,7 +1644,7 @@ async function getShopOrderText(tabId, lastN = 3) {
 async function getRecentConversationMessages(tabId, lastN = 3) {
   for (const frameId of await getFrameIds(tabId)) {
     try {
-      const res = await sendToFrame(tabId, frameId, { type: "COLLECT_RECENT_MESSAGES", lastN });
+      const res = await sendToFrame(tabId, frameId, { type: "TEST_COLLECT_RECENT_MESSAGES", lastN });
       if (res && Array.isArray(res.messages) && res.messages.length) return res.messages;
     } catch (_) {}
   }
