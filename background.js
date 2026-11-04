@@ -498,7 +498,6 @@ async function callDeepSeek({ apiToken, model, messages, catalog }) {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiToken },
     body: JSON.stringify(body)  });
-
   if (!resp.ok) {
     const tx = await resp.text().catch(() => "");
     throw new Error(`DeepSeek API ${resp.status}: ${tx.slice(0, 200)}`);
@@ -997,8 +996,7 @@ async function runFill(tabId, options = {}) {
   let extracted = null;
 
   // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.  if (options.orderText) {
-    blog("Manual test: parse nội dung đơn được dán.");
-    extracted = parseOrderConfirmation(options.orderText, true);
+    blog("Manual test: parse nội dung đơn được dán.");    extracted = parseOrderConfirmation(options.orderText, true);
     if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
     extracted._source = "manual-test";
   } else {
@@ -1427,15 +1425,15 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
           const now = Date.now();
           if (/vừa xong|vua xong|just now|mới đây|moi day/.test(text)) return now;
           if (/^(hôm qua|hom qua|yesterday)$/.test(text)) return now - 24 * 60 * 60 * 1000;
-          let match = text.match(/(\\d+)\\s*(?:giây|giay|seconds?|secs?)\\s*(?:trước|truoc|ago)?/i);
+          let match = text.match(/(\d+)\s*(?:giây|giay|seconds?|secs?)\\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 1000;
-          match = text.match(/(\\d+)\\s*(?:phút|phut|minutes?|mins?)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:phút|phut|minutes?|mins?)\\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 60 * 1000;
-          match = text.match(/(\\d+)\\s*(?:giờ|gio|hours?|hrs?|h)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:giờ|gio|hours?|hrs?|h)\\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 60 * 60 * 1000;
-          match = text.match(/(\\d+)\\s*(?:ngày|ngay|days?|d)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:ngày|ngay|days?|d)\\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 24 * 60 * 60 * 1000;
-          match = text.match(/(\\d+)\\s*(?:tuần|tuan|weeks?|w)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:tuần|tuan|weeks?|w)\\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 7 * 24 * 60 * 60 * 1000;
           return 0;
         };
@@ -1497,8 +1495,7 @@ async function openConversationById(tabId, convId, scanMode = "unread") {
           el.click();
           return { ok: true };
         }
-        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
-        const items = Array.from(document.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
+        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";        const items = Array.from(document.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
         const idOf = (it, idx) => {
           const a = it.querySelector("a[href]");
           const name = (it.querySelector("b.name")?.innerText || it.querySelector(".name")?.innerText || it.querySelector("b")?.innerText || "").trim();
@@ -1997,8 +1994,7 @@ async function runScanCycle() {
     const markup = buttons.length ? { inline_keyboard: buttons } : undefined;
 
     await processScanNotification({
-      kind: "order",
-      key,
+      kind: "order",      key,
       text,
       markup,
       phone,
