@@ -159,21 +159,40 @@ function hasValue(el) {
 function extractItemText(item) {
   const parts = [];
 
-  // Các bong bóng text thường: .c-msg-item-text .raw (nhưng KHÔNG nằm trong app-post-layout)
-  item.querySelectorAll(".c-msg-item-text .raw").forEach((raw) => {
+  // V2: nội dung tin nhắn nằm trong .message-surface .raw.
+  item.querySelectorAll(".message-surface .raw").forEach((raw) => {
     if (raw.closest("app-post-layout")) return;
     const t = textOf(raw);
-    if (t) parts.push(t);
+    if (t && !parts.includes(t)) parts.push(t);
   });
 
-  // Khối xác nhận đơn / nút: .atm .raw (ví dụ "Em gửi đơn cho mình ạ: Mã đơn hàng...")
-  item.querySelectorAll(".atm .raw").forEach((raw) => {
+  // V1 fallback: bong bóng text thường.
+  item.querySelectorAll(".c-msg-item-text .raw, .atm .raw").forEach((raw) => {
     if (raw.closest("app-post-layout")) return;
     const t = textOf(raw);
     if (t && !parts.includes(t)) parts.push(t);
   });
 
   return parts.join("\n").trim();
+}
+
+// V2 PSID là customerId; CID là khóa hội thoại, không dùng thay thế cho nhau.
+function getV2ConversationContext() {
+  const avatar = document.querySelector("img.conv-avatar-img");
+  const avatarSrc = avatar?.getAttribute("src") || "";
+  const psid = avatarSrc.match(/[?&]psid=(\\d+)/i)?.[1] || "";
+  let cid = "";
+  try { cid = new URL(location.href).searchParams.get("cid") || ""; } catch (_) {}
+  const nameEl = document.querySelector(".conv-toolbar .name .copy");
+  return {
+    version: document.querySelector(".conv-toolbar") ? "v2" : "v1",
+    customerName: textOf(nameEl),
+    customerNameTitle: nameEl?.getAttribute("title") || "",
+    customerId: psid,
+    psid,
+    cid,
+    url: location.href
+  };
 }
 
 // Trả về danh sách {sender, role, text} theo thứ tự thời gian (cũ -> mới).
@@ -186,16 +205,26 @@ function readAllMessages() {
     if (!bubble) continue;
 
     const role = bubble.classList.contains("right") ? "shop" : "customer";
-    const sender = textOf(item.querySelector("b.n.copy")) || "";
-    const text = extractItemText(item);
+    const sender = textOf(item.querySelector(".msg-info-aside span.fw-semibold, b.n.copy")) || "";
+    const time = textOf(item.querySelector(".msg-info-aside span.text-nowrap")) || "";
+    const isAdPost = !!item.querySelector("app-post-layout");
+    const text = extractItemText(item) || (isAdPost
+      ? textOf(item.querySelector(".post-content .txt p"))
+      : "");
 
-    if (!text) continue; // bỏ sticker/ảnh thuần
+    if (!text) continue;
 
-    // Bỏ các tin hệ thống gây nhiễu.
     if (/^You took over this chat/i.test(text)) continue;
     if (/^Khách nhắn tin từ quảng cáo/i.test(text)) continue;
 
-    result.push({ sender, role, text });
+    result.push({
+      sender,
+      role,
+      text,
+      time,
+      messageId: item.id || "",
+      isAdPost
+    });
   }
   return result;
 }
@@ -250,7 +279,8 @@ function collectMessages(msgCount) {
   const recent = all.slice(-msgCount).map((m) => `(${m.role === "shop" ? "SHOP" : "KHÁCH"}) ${m.sender}: ${m.text}`);
   return {
     messages: recent,
-    orderConfirmation: findOrderConfirmation(all)
+    orderConfirmation: findOrderConfirmation(all),
+    conversation: getV2ConversationContext()
   };
 }
 
