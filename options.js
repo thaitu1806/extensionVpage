@@ -265,8 +265,9 @@ $("vpageBoxTestBtn").addEventListener("click", async () => {
   let tabId = null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== "https:" || url.hostname !== "vpage.nhanh.vn" || !url.pathname.startsWith("/app/conversation")) {
-      throw new Error("Chỉ chấp nhận URL https://vpage.nhanh.vn/app/conversation...");
+    if (url.protocol !== "https:" || url.hostname !== "vpage.nhanh.vn" ||
+        !(url.pathname === "/conversation" || url.pathname.startsWith("/app/conversation"))) {
+      throw new Error("Chỉ chấp nhận URL hội thoại https://vpage.nhanh.vn/conversation?cid=... hoặc /app/conversation...");
     }
     const tab = await chrome.tabs.create({ url: url.href, active: true });
     tabId = tab.id;
