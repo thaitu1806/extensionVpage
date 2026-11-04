@@ -140,13 +140,14 @@ function moveAddressParenthesesToNote(data) {
   return data;
 }
 
-// Chuẩn hóa tên địa danh theo cách viết shop yêu cầu.
+// Chỉ chuẩn hóa "Quy Nhơn" thành "Qui Nhơn" ở địa chỉ hành chính 3 cấp.
+// Địa chỉ 2 cấp phải giữ nguyên cách viết chuẩn "Quy Nhơn".
 function normalizeAddressPlaceNames(data) {
   if (!data || typeof data !== "object") return data;
-  for (const key of ["address", "addressRegion", "addressRegion2"]) {
-    if (typeof data[key] === "string") {
-      data[key] = data[key].replace(/quy\s+nh[oơ]n/giu, "Qui Nhơn");
-    }
+  const region3 = String(data.addressRegion || "").trim();
+  const parts = region3.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 3) {
+    data.addressRegion = region3.replace(/quy\s+nh[oơ]n/giu, "Qui Nhơn");
   }
   return data;
 }
@@ -1163,7 +1164,7 @@ async function runFill(tabId, options = {}) {
     blog(`Địa chỉ đã chuẩn (JS). 3 cấp="${extracted.addressRegion}", 2 cấp="${extracted.addressRegion2}"`);
   }
 
-  // Quy Nhơn được chuẩn hóa thành Qui Nhơn theo quy ước của shop.
+  // Chỉ đổi Quy Nhơn -> Qui Nhơn trong địa chỉ hành chính 3 cấp; bản 2 cấp giữ Quy Nhơn.
   normalizeAddressPlaceNames(extracted);
   appendMissingHcmProvince(extracted);
 
