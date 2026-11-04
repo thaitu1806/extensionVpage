@@ -1416,42 +1416,40 @@ async function findConversationTab() {
   return tabs && tabs.length ? tabs[0] : null;
 }
 
-// Liệt kê hội thoại theo chế độ: "unread" = chưa đọc; "recent5" = 5 box gần nhất bất kể trạng thái đọc.
+// Liệt kê hội thoại theo chế độ: V2 dùng .conv-item; V1 giữ selector cũ.
 async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: function (mode, count) {
-        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
         const limit = Math.max(1, Math.min(50, Number.parseInt(count, 10) || 5));
-        const items = Array.from(document.querySelectorAll(selector))
-          .filter((el) => el.offsetParent !== null)
-          .slice(0, mode === "recent5" ? limit : 5);
-        const out = [];
-        items.forEach((it, idx) => {
-          const name = (it.querySelector("b.name")?.innerText
-            || it.querySelector(".name")?.innerText
-            || it.querySelector("b")?.innerText || "").trim();
+        const root = document.querySelector(".conversation-list-pane");
+        if (root) {
+          const all = Array.from(root.querySelectorAll(".conv-item")).filter((el) => el.offsetParent !== null);
+          const items = mode === "recent5" ? all.slice(0, limit) : all.filter((el) => el.classList.contains("unread")).slice(0, 5);
+          return { version: "v2", total: items.length, list: items.map((el, idx) => {
+            const name = (el.querySelector(".conv-name")?.innerText || "").trim();
+            const preview = (el.querySelector(".conv-preview")?.innerText || "").trim();
+            const src = el.querySelector("img.conv-avatar-img")?.getAttribute("src") || "";
+            let psid = "";
+            try { psid = new URL(src, location.href).searchParams.get("psid") || ""; } catch (_) {}
+            return { id: psid ? "psid:" + psid : "v2:" + idx + ":" + name, name, psid, preview, activityAt: 0 };
+          }) };
+        }
+        const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
+        const items = Array.from(document.querySelectorAll(selector)).filter((el) => el.offsetParent !== null).slice(0, mode === "recent5" ? limit : 5);
+        const list = items.map((it, idx) => {
+          const name = (it.querySelector("b.name")?.innerText || it.querySelector(".name")?.innerText || it.querySelector("b")?.innerText || "").trim();
           const a = it.querySelector("a[href]");
-          const timeTitle = it.querySelector(".conv-time[title]")?.getAttribute("title") || "";
-          const timeMatch = timeTitle.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
-          const activityAt = timeMatch
-            ? new Date(Number(timeMatch[3]), Number(timeMatch[2]) - 1, Number(timeMatch[1]), Number(timeMatch[4]), Number(timeMatch[5]), Number(timeMatch[6])).getTime()
-            : 0;
-          const id = it.getAttribute("data-id")
-            || it.getAttribute("data-conversation-id")
-            || it.getAttribute("data-cid")
-            || it.id
-            || (a && a.getAttribute("href"))
-            || (name ? `name:${name}` : `idx:${idx}`);
-          out.push({ id, name, activityAt });
+          const id = it.getAttribute("data-id") || it.getAttribute("data-conversation-id") || it.getAttribute("data-cid") || it.id || (a && a.getAttribute("href")) || (name ? "name:" + name : "idx:" + idx);
+          return { id, name, activityAt: 0 };
         });
-        return { list: out, total: items.length };
+        return { version: "v1", total: items.length, list };
       },
       args: [scanMode, recentCount]
     });
     const r = (results && results[0] && results[0].result) || { list: [] };
-    blog(`listConversations: chế độ ${scanMode}, lấy ${r.total} box gần nhất (tối đa ${scanMode === "recent5" ? Math.max(1, Math.min(50, parseInt(recentCount, 10) || 5)) : 5}).`);
+    blog("listConversations: V" + (r.version === "v2" ? "2" : "1") + ", " + scanMode + ", " + r.total + " box.");
     return r.list || [];
   } catch (e) {
     blog("listConversations lỗi:", e.message);
@@ -1459,29 +1457,36 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
   }
 }
 
-// Click mở hội thoại theo khóa ổn định; recent5 tìm trong tất cả box vì khi mở, box có thể chuyển trạng thái đã đọc.
+// Mở hội thoại: V2 định danh bằng PSID, V1 giữ nguyên cách tìm cũ.
 async function openConversationById(tabId, convId, scanMode = "unread") {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: function (wantId, mode) {
+        const root = document.querySelector(".conversation-list-pane");
+        if (root) {
+          const items = Array.from(root.querySelectorAll(".conv-item")).filter((el) => el.offsetParent !== null);
+          const el = items.find((item, idx) => {
+            if (mode !== "recent5" && !item.classList.contains("unread")) return false;
+            const src = item.querySelector("img.conv-avatar-img")?.getAttribute("src") || "";
+            let psid = "";
+            try { psid = new URL(src, location.href).searchParams.get("psid") || ""; } catch (_) {}
+            const name = (item.querySelector(".conv-name")?.innerText || "").trim();
+            return (psid ? "psid:" + psid : "v2:" + idx + ":" + name) === wantId;
+          });
+          if (!el) return { ok: false };
+          el.scrollIntoView({ block: "center" });
+          el.click();
+          return { ok: true };
+        }
         const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
-        const items = Array.from(document.querySelectorAll(selector))
-          .filter((el) => el.offsetParent !== null);
+        const items = Array.from(document.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
         const idOf = (it, idx) => {
           const a = it.querySelector("a[href]");
-          const name = (it.querySelector("b.name")?.innerText
-            || it.querySelector(".name")?.innerText
-            || it.querySelector("b")?.innerText || "").trim();
-          return it.getAttribute("data-id")
-            || it.getAttribute("data-conversation-id")
-            || it.getAttribute("data-cid")
-            || it.id
-            || (a && a.getAttribute("href"))
-            || (name ? `name:${name}` : `idx:${idx}`);
+          const name = (it.querySelector("b.name")?.innerText || it.querySelector(".name")?.innerText || it.querySelector("b")?.innerText || "").trim();
+          return it.getAttribute("data-id") || it.getAttribute("data-conversation-id") || it.getAttribute("data-cid") || it.id || (a && a.getAttribute("href")) || (name ? "name:" + name : "idx:" + idx);
         };
-        let el = null;
-        items.forEach((it, idx) => { if (!el && idOf(it, idx) === wantId) el = it; });
+        const el = items.find((it, idx) => idOf(it, idx) === wantId);
         if (!el) return { ok: false };
         el.scrollIntoView({ block: "center" });
         const target = el.querySelector(".info, .content, b.name, .name") || el;
@@ -1490,7 +1495,7 @@ async function openConversationById(tabId, convId, scanMode = "unread") {
         target.dispatchEvent(new MouseEvent("mousedown", opts));
         target.dispatchEvent(new MouseEvent("mouseup", opts));
         target.dispatchEvent(new MouseEvent("click", opts));
-        if (typeof el.click === "function") el.click();
+        el.click();
         return { ok: true };
       },
       args: [convId, scanMode]
