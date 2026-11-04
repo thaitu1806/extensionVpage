@@ -1712,6 +1712,37 @@ async function getShopOrderText(tabId, lastN = 3) {
 }
 
 // Lấy N tin nhắn gần nhất để cảnh báo Telegram khi AI chưa kịp tạo template chốt đơn.
+// Lấy CID hội thoại V2 sau khi đã click mở box. VPage dùng khóa composite fanpageId_conversationId.
+async function getTelegramConversationLink(tabId, conv) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: function () {
+        let cid = "";
+        try { cid = new URL(location.href).searchParams.get("cid") || ""; } catch (_) {}
+        return { version: document.querySelector(".conv-toolbar") ? "v2" : "v1", cid };
+      },
+      args: []
+    });
+    const context = results?.[0]?.result || {};
+    if (context.version === "v2") {
+      // Chỉ tạo link khi có đủ composite CID hợp lệ; không thay bằng PSID/SĐT.
+      const cid = String(context.cid || "").trim();
+      if (!/^\\d+_\\d+$/.test(cid)) {
+        blog(`Telegram link: V2 chưa có CID composite hợp lệ cho "${conv?.name || ""}".`);
+        return "";
+      }
+      return `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
+    }
+    // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
+    return "";
+  } catch (e) {
+    blog("Telegram link: không lấy được CID hội thoại:", e.message);
+    return "";
+  }
+}
+
 async function getRecentConversationMessages(tabId, lastN = 3) {
   for (const frameId of await getFrameIds(tabId)) {
     try {
@@ -2002,6 +2033,7 @@ async function runScanCycle() {
 
     // 2) Chờ khung chat nạp tin nhắn (~2.5s).
     await new Promise((r) => setTimeout(r, 2500));
+    const v2ConversationUrl = await getTelegramConversationLink(tab.id, conv);
 
     // 3) Kiểm tra 3 tin mới nhất trước mọi luồng Telegram/tự lên đơn.
     // Nếu gặp tracking hoặc tin hệ thống/CSKH của Bếp thì bỏ qua hội thoại này ngay.
@@ -2161,7 +2193,7 @@ async function runScanCycle() {
         "",
         "ℹ️ Có thể AI chưa kịp tạo đơn hoặc chốt đơn tự động bị lỗi. Vui lòng kiểm tra hội thoại."
       ].filter(Boolean).join("\n");
-      const fallbackUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`;
+      const fallbackUrl = v2ConversationUrl || `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`;
       const fallbackButtons = [];
       // Có SĐT và đã cấu hình Worker thì hiện nút Lên đơn như thông báo đơn chuẩn.
       if (contact.phone && cfg.workerUrl) {
@@ -2197,9 +2229,9 @@ async function runScanCycle() {
     // Link mở đúng hội thoại để lên đơn (theo SĐT). Dùng cho nút "Lên đơn" và
     // sau này cho trigger lên đơn tự động.
     const phone = parsed && parsed.phone ? parsed.phone : "";
-    const orderUrl = phone
+    const orderUrl = v2ConversationUrl || (phone
       ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`
-      : "";
+      : "");
 
     // Gửi ĐẦY ĐỦ: trường đã parse + nguyên văn khối đơn + link lên đơn.
     const text = formatOrderForTelegram(parsed, conv.name, orderText, orderUrl);
