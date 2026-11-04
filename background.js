@@ -2572,7 +2572,10 @@ async function sendAutoOrderTrackingLink(conversationTabId) {
 async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
   // Luôn dùng tab riêng; chế độ background không lấy focus khỏi tab người dùng.
-  const cfg = await chrome.storage.local.get({ orderTabMode: "default" });
+  const cfg = await chrome.storage.local.get({
+    orderTabMode: "default",
+    autoSendTrackingLink: false
+  });
   const mode = ["background", "switch"].includes(cfg.orderTabMode) ? cfg.orderTabMode : "default";
   // Default: hành vi cũ (mở tab mới và chuyển focus ngay).
   // Background: tạo tab không active để người dùng tiếp tục tab đang làm.
@@ -2597,6 +2600,22 @@ async function fillOrderByPhone(phone) {
     blog(`AutoFill webhook: bắt đầu runFill cho tab mới #${tab.id} (SĐT ${phone}).`);
     res = await runFill(tab.id, { mode: "webhook" });
     blog(`AutoFill webhook: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
+
+    // Chỉ gửi link tracking khi đơn đã được tự động lưu thành công và người dùng bật cấu hình.
+    if (res?.submitted === true && cfg.autoSendTrackingLink === true) {
+      try {
+        blog("Tracking tự động: đơn đã lưu; bắt đầu lấy link lịch trình và gửi vào hội thoại.");
+        const trackingResult = await sendAutoOrderTrackingLink(tab.id);
+        res.trackingLinkSent = !!trackingResult?.ok;
+        if (!trackingResult?.ok) res.trackingLinkError = trackingResult?.reason || "tracking-link-failed";
+      } catch (e) {
+        res.trackingLinkSent = false;
+        res.trackingLinkError = e?.message || String(e);
+        blog("Tracking tự động: lỗi ngoài dự kiến: " + res.trackingLinkError);
+      }
+    } else if (res?.submitted === true) {
+      blog("Tracking tự động: đang tắt trong Cấu hình; bỏ qua gửi link.");
+    }
     return res;
   } finally {
     // Cập nhật Unread ngay trước khi đóng tab; không dùng alert/confirm.
