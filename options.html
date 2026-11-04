@@ -65,6 +65,14 @@
     </div>
 
     <div class="divider"></div>
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Test logic quét một box VPage</h1>
+    <p class="desc">Dán URL hội thoại đang mở trên VPage. Extension sẽ đọc đúng box đó và log từng bước nhận diện tracking/template, fallback, parse, Telegram và điều kiện tự lên đơn trong Console của Service Worker. Chế độ chỉ đọc: không gửi Telegram, không tạo đơn, không nhắn khách, không lưu dữ liệu.</p>
+    <label for="vpageBoxTestUrl">URL hội thoại VPage</label>
+    <input type="url" id="vpageBoxTestUrl" placeholder="https://vpage.nhanh.vn/app/conversation?..." autocomplete="off" />
+    <button id="vpageBoxTestBtn" style="background:#1d4ed8; margin-top:10px;">Đọc box &amp; chạy test logic</button>
+    <div class="status" id="vpageBoxTestStatus"></div>
+
     <h1 style="font-size:16px;">Test lên đơn thủ công</h1>
     <p class="desc">Dán nguyên văn nội dung xác nhận đơn vào đây. Extension sẽ phân tích và điền vào form Vpage đang mở, chọn trạng thái “Mới” và KHÔNG bấm Lưu.</p>
     <label for="manualOrderText">Nội dung đơn hàng</label>
