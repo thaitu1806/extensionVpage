@@ -1349,6 +1349,83 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
   }
+  if (msg?.type === "TEST_VPAGE_CONVERSATION") {
+    (async () => {
+      const tabId = Number(msg.tabId);
+      if (!Number.isInteger(tabId)) throw new Error("tabId không hợp lệ.");
+      const cfg = await chrome.storage.local.get({ tgMsgCount: 3, workerUrl: "", autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false });
+      const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
+      blog("========== [VPage BOX TEST] BẮT ĐẦU ==========");
+      blog(`[BOX TEST] tabId=${tabId}; lấy ${lastN} tin cuối; CHẾ ĐỘ CHỈ ĐỌC, không gửi Telegram/không tạo đơn/không lưu.`);
+      const recentMessages = await getRecentConversationMessages(tabId, lastN);
+      blog(`[BOX TEST] Đọc được ${recentMessages.length}/${lastN} tin.`);
+      recentMessages.forEach((m, index) => {
+        const rawText = String(m?.text || "");
+        const normalized = normalizeTrackingText(rawText);
+        const trackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(rawText);
+        const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
+        const isTracking = trackingWords.length > 0 || trackingLink || /\\btracking\\b/i.test(rawText);
+        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
+          || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
+          || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\\s*:/i.test(rawText)
+            && (/\\d+\\s*x\\s*\\S/i.test(rawText) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(rawText)));
+        blog(`[BOX TEST] #${index+1} role=${m?.role||"?"} tracking=${isTracking} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplate} text="${rawText.replace(/\\s+/g," ").slice(0,500)}"`);
+      });
+      if (!recentMessages.length) throw new Error("Không đọc được tin nhắn. Kiểm tra URL đã mở đúng hội thoại và chat đã tải xong.");
+      const latestMessage = recentMessages[recentMessages.length - 1];
+      if (isLatestUndeliveredMessage(latestMessage)) {
+        blog("[BOX TEST] Nhánh giao hàng thất bại: production sẽ đọc link tracking/số bưu tá và gửi tin nhắn cho khách. TEST chỉ mô phỏng, không thực hiện.");
+        return { ok: true, summary: "Nhánh giao hàng thất bại; đã mô phỏng, không gửi tin." };
+      }
+      let latestOrderSignal = "";
+      for (let i = recentMessages.length - 1; i >= 0; i--) {
+        const m = recentMessages[i];
+        if (m?.role !== "shop") continue;
+        const t = String(m.text || "");
+        const n = normalizeTrackingText(t);
+        const hasTrackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
+        const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang") || n.includes("ma van don")
+          || n.includes("thong bao tu bep") || n.includes("tran trong") || /\\btracking\\b/i.test(t) || hasTrackingLink;
+        if (isTracking) { latestOrderSignal = "tracking"; blog(`[BOX TEST] Duyệt ngược: gặp tin SHOP hậu xử lý tại index ${i+1}; DỪNG.`); break; }
+        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+          || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
+            && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
+        if (isTemplate) { latestOrderSignal = "template"; blog(`[BOX TEST] Duyệt ngược: gặp TEMPLATE tại index ${i+1}; DỪNG, ưu tiên template mới hơn tracking cũ.`); break; }
+      }
+      blog(`[BOX TEST] latestOrderSignal=${latestOrderSignal || "none"}`);
+      if (latestOrderSignal === "tracking") {
+        blog("[BOX TEST] KẾT QUẢ: SKIP_NOTIFY_AND_AUTO_ORDER.");
+        return { ok: true, summary: "Có tracking/mã đơn mới hơn template: bỏ qua notify và tự lên đơn." };
+      }
+      const orderText = latestOrderSignal === "template" ? await getShopOrderText(tabId, lastN) : "";
+      blog(`[BOX TEST] COLLECT_SHOP_ORDER: ${orderText ? "có nội dung ("+orderText.length+" ký tự)" : "RỖNG"}`);
+      if (!orderText) {
+        const contact = findCustomerContactMessage(recentMessages);
+        if (!contact) {
+          blog("[BOX TEST] KẾT QUẢ: không template, không tìm thấy tin khách có cả SĐT + địa chỉ => KHÔNG notify.");
+          return { ok: true, summary: "Không có template hoặc fallback contact đủ điều kiện." };
+        }
+        const fallbackKey = "contact:" + contact.phone;
+        const st = await chrome.storage.local.get({ tgNotified: {} });
+        const wasNotified = !!(st.tgNotified || {})[fallbackKey];
+        blog(`[BOX TEST] FALLBACK: phone=${contact.phone}; dedup=${wasNotified ? "ĐÃ TỪNG GỬI -> SKIP" : "chưa gửi -> dự kiến notify"}.`);
+        blog("[BOX TEST] Không gửi Telegram trong test.");
+        return { ok: true, summary: wasNotified ? "Fallback bị chặn do đã notify số điện thoại." : "Đủ điều kiện fallback notify; không gửi thật." };
+      }
+      const parsed = parseOrderConfirmation(orderText);
+      blog("[BOX TEST] PARSE RESULT: " + JSON.stringify(parsed));
+      const phone = parsed?.phone || "";
+      const orderUrl = phone ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}` : "";
+      const hasWorker = !!cfg.workerUrl;
+      blog(`[BOX TEST] TELEGRAM: dự kiến notify đơn chuẩn; phone=${phone || "(trống)"}; nút Lên đơn=${phone && hasWorker ? "HIỆN" : "ẨN"}; nút Mở hội thoại=${orderUrl ? "HIỆN" : "ẨN"}.`);
+      blog(`[BOX TEST] AUTO ORDER GATES: autoOrderOnNotify=${!!cfg.autoOrderOnNotify}; autoFillEnabled=${!!cfg.autoFillEnabled}; phone=${!!phone}; kết quả=${cfg.autoOrderOnNotify && cfg.autoFillEnabled && phone ? "ĐỦ ĐIỀU KIỆN gọi fillOrderByPhone" : "KHÔNG gọi fillOrderByPhone"}.`);
+      if (cfg.autoSubmitOrder) blog("[BOX TEST] autoSubmitOrder đang bật; TEST tuyệt đối không submit.");
+      blog("[BOX TEST] KẾT THÚC: không gọi tgSend/processScanNotification/fillOrderByPhone; không thay đổi storage.");
+      return { ok: true, summary: "Đã mô phỏng luồng template/parse/notify/auto-order trong console; không phát sinh thao tác thật." };
+    })().then(sendResponse).catch(e => { blog("[BOX TEST] LỖI: " + (e?.stack || e?.message || e)); sendResponse({ ok: false, error: e.message }); });
+    return true;
+  }
   if (msg?.type === "TEST_TRACKING_LINK") {
     const value = String(msg.url || "").trim();
     const normalized = normalizeTrackingText(value);
