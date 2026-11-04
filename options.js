@@ -236,6 +236,27 @@ $("pullTest").addEventListener("click", () => {
   }).catch((e) => { st.textContent = "Kiểm tra thất bại: " + e.message; st.className = "status err"; });
 });
 
+$("trackingLinkTestBtn").addEventListener("click", () => {
+  const status = $("trackingLinkTestStatus");
+  const url = $("trackingLinkTest").value.trim();
+  status.textContent = "Đang kiểm tra...";
+  status.className = "status";
+  if (!url) {
+    status.textContent = "Hãy dán link tracking hoặc nội dung mã đơn hàng.";
+    status.className = "status err";
+    return;
+  }
+  chrome.runtime.sendMessage({ type: "TEST_TRACKING_LINK", url }, (res) => {
+    if (chrome.runtime.lastError) {
+      status.textContent = "Lỗi extension: " + chrome.runtime.lastError.message;
+      status.className = "status err";
+      return;
+    }
+    status.textContent = res?.message || "Không nhận được kết quả kiểm tra.";
+    status.className = res?.ok && res?.detected ? "status ok" : "status err";
+  });
+});
+
 $("manualOrderTest").addEventListener("click", () => {
   const status = $("manualOrderStatus");
   const orderText = $("manualOrderText").value.trim();
