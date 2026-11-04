@@ -140,14 +140,35 @@ function moveAddressParenthesesToNote(data) {
   return data;
 }
 
-// Chỉ chuẩn hóa "Quy Nhơn" thành "Qui Nhơn" ở địa chỉ hành chính 3 cấp.
-// Địa chỉ 2 cấp phải giữ nguyên cách viết chuẩn "Quy Nhơn".
+// Các phường mới thuộc Quy Nhơn (Gia Lai) mặc định dùng địa chỉ hành chính 2 cấp:
+// Phường Quy Nhơn, Quy Nhơn Đông/Tây/Nam/Bắc. Nếu đầu vào có 3 cấp,
+// bỏ cấp trung gian và giữ nguyên tên "Quy Nhơn" (không đổi thành "Qui Nhơn").
+// Các địa chỉ Quy Nhơn khác vẫn áp dụng quy tắc cũ: 3 cấp dùng "Qui Nhơn".
 function normalizeAddressPlaceNames(data) {
   if (!data || typeof data !== "object") return data;
   const region3 = String(data.addressRegion || "").trim();
   const parts = region3.split(",").map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) return data;
+
+  const ward = parts[0].replace(/^(?:phường|p\\.?)[ ]*/iu, "").trim();
+  const normalizedWard = ward.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  const quyNhonNewWards = new Set([
+    "quy nhon",
+    "quy nhon dong",
+    "quy nhon tay",
+    "quy nhon nam",
+    "quy nhon bac"
+  ]);
+
+  if (quyNhonNewWards.has(normalizedWard) && parts.length >= 2) {
+    data.addressRegion = [parts[0], parts[parts.length - 1]].join(", ");
+    if (data.addressRegion2) data.addressRegion2 = data.addressRegion;
+    blog(`Địa chỉ thuộc phường mới Quy Nhơn; tự chuyển về 2 cấp: "${data.addressRegion}".`);
+    return data;
+  }
+
   if (parts.length >= 3) {
-    data.addressRegion = region3.replace(/quy\s+nh[oơ]n/giu, "Qui Nhơn");
+    data.addressRegion = region3.replace(/quy\\s+nh[oơ]n/giu, "Qui Nhơn");
   }
   return data;
 }
