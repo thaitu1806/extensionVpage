@@ -1645,8 +1645,22 @@ async function getShopOrderText(tabId, lastN = 3) {
 async function getRecentConversationMessages(tabId, lastN = 3) {
   for (const frameId of await getFrameIds(tabId)) {
     try {
+      // Dùng cùng nguồn raw bubble đã được BOX TEST xác minh; giữ trường text
+      // để toàn bộ logic notify/fallback/auto-order xử lý thống nhất.
       const res = await sendToFrame(tabId, frameId, { type: "TEST_COLLECT_RECENT_MESSAGES", lastN });
-      if (res && Array.isArray(res.messages) && res.messages.length) return res.messages;
+      if (res && Array.isArray(res.messages) && res.messages.length) {
+        return res.messages
+          .filter((m) => {
+            const raw = String(m?.rawText || "").trim();
+            return raw && !(/Chọn tin nhắn/i.test(raw) && /Sao chép/i.test(raw) && /Ghim/i.test(raw));
+          })
+          .map((m) => ({
+            role: m.role,
+            text: String(m.rawText || ""),
+            sender: "",
+            messageId: m.messageId || ""
+          }));
+      }
     } catch (_) {}
   }
   return [];
@@ -2038,8 +2052,17 @@ async function runScanCycle() {
     }
 
     // 5) Lấy template SHOP trong N tin gần nhất. Chỉ lấy khi template là tín hiệu mới nhất.
+    // Parse chính xác raw text của template đã được xác định trong cùng lượt đọc.
+    // Không gọi extractor cũ lần hai vì có thể trả về nội dung khác/thiếu tin.
     const orderText = latestOrderSignal === "template"
-      ? await getShopOrderText(tab.id, lastN)
+      ? String(recentMessages.slice().reverse().find((m) =>
+          m?.role === "shop" && (
+            (/XÁC NHẬN ĐƠN HÀNG/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
+            || (/Mã đơn hàng/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
+            || (/(Số điện thoại|Điện thoại)/i.test(m.text || "") && /Sản ?phẩm\\s*:/i.test(m.text || "")
+              && (/\\d+\\s*x\\s*\\S/i.test(m.text || "") || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(m.text || "")))
+          )
+        )?.text || "")
       : "";
     if (!orderText) {
       blog(`[SCAN DEBUG] "${conv.name}" orderText rỗng; chuyển sang kiểm tra fallback contact.`);
