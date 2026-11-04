@@ -257,6 +257,39 @@ $("trackingLinkTestBtn").addEventListener("click", () => {
   });
 });
 
+$("vpageBoxTestBtn").addEventListener("click", async () => {
+  const status = $("vpageBoxTestStatus");
+  const raw = $("vpageBoxTestUrl").value.trim();
+  status.textContent = "Đang mở đúng hội thoại và đọc dữ liệu...";
+  status.className = "status";
+  let tabId = null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.hostname !== "vpage.nhanh.vn" || !url.pathname.startsWith("/app/conversation")) {
+      throw new Error("Chỉ chấp nhận URL https://vpage.nhanh.vn/app/conversation...");
+    }
+    const tab = await chrome.tabs.create({ url: url.href, active: true });
+    tabId = tab.id;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); reject(new Error("Hết thời gian chờ VPage tải.")); }, 30000);
+      const listener = (id, info) => {
+        if (id === tabId && info.status === "complete") {
+          clearTimeout(timeout); chrome.tabs.onUpdated.removeListener(listener); resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    await new Promise(r => setTimeout(r, 2500));
+    const res = await chrome.runtime.sendMessage({ type: "TEST_VPAGE_CONVERSATION", tabId });
+    if (!res?.ok) throw new Error(res?.error || "Test thất bại.");
+    status.textContent = res.summary + " Mở Console của Service Worker để xem [BOX TEST]. Tab hội thoại được giữ mở.";
+    status.className = "status ok";
+  } catch (e) {
+    status.textContent = "Lỗi: " + e.message;
+    status.className = "status err";
+  }
+});
+
 $("manualOrderTest").addEventListener("click", () => {
   const status = $("manualOrderStatus");
   const orderText = $("manualOrderText").value.trim();
