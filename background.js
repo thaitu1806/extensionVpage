@@ -22,7 +22,7 @@ function hasRecentTrackingInbox(messages) {
 function hasRecentStopPhrase(messages, count = 3) {
   const limit = Math.min(Math.max(parseInt(count, 10) || 3, 1), 50);
   const recent = (Array.isArray(messages) ? messages : []).slice(-limit);
-  const stopPhrases = ["theo doi van chuyen", "thong bao tu bep", "tran trong"];
+  const stopPhrases = ["theo doi van chuyen", "ma don hang", "thong bao tu bep", "tran trong"];
   // Chỉ cần có một dấu hiệu hậu xử lý trong cửa sổ tin gần nhất là dừng.
   // Không để các câu CSKH như "đã lên đơn thành công" xuất hiện sau đó
   // vô hiệu hóa dấu tracking của đơn đã tạo.
@@ -1882,6 +1882,7 @@ async function runScanCycle() {
       const normalizedMessage = normalizeTrackingText(messageText);
       const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(messageText);
       const isTracking = normalizedMessage.includes("theo doi van chuyen")
+        || normalizedMessage.includes("ma don hang")
         || normalizedMessage.includes("ma van don")
         || /\btracking\b/i.test(messageText)
         || hasTrackingLink;
