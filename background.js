@@ -2008,10 +2008,8 @@ async function runScanCycle() {
       continue;
     }
 
-    // Parse để lấy thông tin + khóa chống trùng; nếu parse lỗi vẫn gửi text thô.
+    // Parse thông tin đơn để định dạng nội dung Telegram.
     const parsed = parseOrderConfirmation(orderText);
-    const key = (parsed && parsed.phone) || orderText.slice(0, 120);
-    if (notified[key]) { blog(`Quét: "${conv.name}" - đã gửi trước đó, bỏ qua.`); continue; }
 
     // Link mở đúng hội thoại để lên đơn (theo SĐT). Dùng cho nút "Lên đơn" và
     // sau này cho trigger lên đơn tự động.
