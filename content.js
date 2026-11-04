@@ -208,12 +208,15 @@ function readAllMessages() {
     const sender = textOf(item.querySelector(".msg-info-aside span.fw-semibold, b.n.copy")) || "";
     const time = textOf(item.querySelector(".msg-info-aside span.text-nowrap")) || "";
     const isAdPost = !!item.querySelector("app-post-layout");
-    const text = extractItemText(item) || (isAdPost
+    // Dùng đúng text hiển thị trong bubble như BOX TEST đã xác minh.
+    // Bỏ item chỉ chứa menu thao tác của VPage (không phải nội dung chat).
+    const rawText = textOf(bubble);
+    const text = rawText || (isAdPost
       ? textOf(item.querySelector(".post-content .txt p"))
       : "");
 
     if (!text) continue;
-
+    if (/Chọn tin nhắn/i.test(text) && /Sao chép/i.test(text) && /Ghim/i.test(text)) continue;
     if (/^You took over this chat/i.test(text)) continue;
     if (/^Khách nhắn tin từ quảng cáo/i.test(text)) continue;
 
