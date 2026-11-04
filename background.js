@@ -497,8 +497,7 @@ async function callDeepSeek({ apiToken, model, messages, catalog }) {
   const resp = await fetch(DEEPSEEK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiToken },
-    body: JSON.stringify(body)
-  });
+    body: JSON.stringify(body)  });
 
   if (!resp.ok) {
     const tx = await resp.text().catch(() => "");
@@ -997,8 +996,7 @@ async function runFill(tabId, options = {}) {
   let initialMessages = [];
   let extracted = null;
 
-  // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
-  if (options.orderText) {
+  // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.  if (options.orderText) {
     blog("Manual test: parse nội dung đơn được dán.");
     extracted = parseOrderConfirmation(options.orderText, true);
     if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
@@ -1423,6 +1421,24 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
       target: { tabId, frameIds: [0] },
       func: function (mode, count) {
         const limit = Math.max(1, Math.min(50, Number.parseInt(count, 10) || 5));
+        const parseActivityTime = (value) => {
+          const text = String(value || "").trim().toLowerCase();
+          if (!text) return 0;
+          const now = Date.now();
+          if (/vừa xong|vua xong|just now|mới đây|moi day/.test(text)) return now;
+          if (/^(hôm qua|hom qua|yesterday)$/.test(text)) return now - 24 * 60 * 60 * 1000;
+          let match = text.match(/(\\d+)\\s*(?:giây|giay|seconds?|secs?)\\s*(?:trước|truoc|ago)?/i);
+          if (match) return now - Number(match[1]) * 1000;
+          match = text.match(/(\\d+)\\s*(?:phút|phut|minutes?|mins?)\\s*(?:trước|truoc|ago)?/i);
+          if (match) return now - Number(match[1]) * 60 * 1000;
+          match = text.match(/(\\d+)\\s*(?:giờ|gio|hours?|hrs?|h)\\s*(?:trước|truoc|ago)?/i);
+          if (match) return now - Number(match[1]) * 60 * 60 * 1000;
+          match = text.match(/(\\d+)\\s*(?:ngày|ngay|days?|d)\\s*(?:trước|truoc|ago)?/i);
+          if (match) return now - Number(match[1]) * 24 * 60 * 60 * 1000;
+          match = text.match(/(\\d+)\\s*(?:tuần|tuan|weeks?|w)\\s*(?:trước|truoc|ago)?/i);
+          if (match) return now - Number(match[1]) * 7 * 24 * 60 * 60 * 1000;
+          return 0;
+        };
         const root = document.querySelector(".conversation-list-pane");
         if (root) {
           const all = Array.from(root.querySelectorAll(".conv-item")).filter((el) => el.offsetParent !== null);
@@ -1430,10 +1446,12 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
           return { version: "v2", total: items.length, list: items.map((el, idx) => {
             const name = (el.querySelector(".conv-name")?.innerText || "").trim();
             const preview = (el.querySelector(".conv-preview")?.innerText || "").trim();
+            const timeText = (el.querySelector(".conv-time")?.innerText || "").trim();
+            const activityAt = parseActivityTime(timeText);
             const src = el.querySelector("img.conv-avatar-img")?.getAttribute("src") || "";
             let psid = "";
             try { psid = new URL(src, location.href).searchParams.get("psid") || ""; } catch (_) {}
-            return { id: psid ? "psid:" + psid : "v2:" + idx + ":" + name, name, psid, preview, activityAt: 0 };
+            return { id: psid ? "psid:" + psid : "v2:" + idx + ":" + name, name, psid, preview, timeText, activityAt };
           }) };
         }
         const selector = mode === "recent5" ? ".item.position-relative" : ".item.position-relative.unread";
@@ -1497,8 +1515,7 @@ async function openConversationById(tabId, convId, scanMode = "unread") {
         target.dispatchEvent(new MouseEvent("click", opts));
         el.click();
         return { ok: true };
-      },
-      args: [convId, scanMode]
+      },      args: [convId, scanMode]
     });
     return !!(results && results[0] && results[0].result && results[0].result.ok);
   } catch (e) {
@@ -1997,8 +2014,7 @@ async function runScanCycle() {
     const maxActivityAt = Math.max(0, ...conversations.map((conv) => Number(conv.activityAt) || 0));
     if (maxActivityAt > 0) saveState.scanActivityCheckpoint = Math.max(checkpointAt, maxActivityAt);
   }
-  await chrome.storage.local.set(saveState);
-  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
+  await chrome.storage.local.set(saveState);  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
 }
 
 function escapeHtml(s) {
