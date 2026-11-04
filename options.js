@@ -257,6 +257,39 @@ $("trackingLinkTestBtn").addEventListener("click", () => {
   });
 });
 
+$("vpageAutoOrderTestBtn").addEventListener("click", async () => {
+  const status = $("vpageAutoOrderTestStatus");
+  const raw = $("vpageBoxTestUrl").value.trim();
+  status.textContent = "Đang mở box và chạy thử trích xuất/điền form...";
+  status.className = "status";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" || url.hostname !== "vpage.nhanh.vn" ||
+        !(url.pathname === "/conversation" || url.pathname.startsWith("/app/conversation"))) {
+      throw new Error("Hãy nhập URL hội thoại VPage hợp lệ ở ô phía trên.");
+    }
+    const tab = await chrome.tabs.create({ url: url.href, active: true });
+    const tabId = tab.id;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); reject(new Error("Hết thời gian chờ VPage tải.")); }, 30000);
+      const listener = (id, info) => {
+        if (id === tabId && info.status === "complete") {
+          clearTimeout(timeout); chrome.tabs.onUpdated.removeListener(listener); resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+    await new Promise(r => setTimeout(r, 2500));
+    const res = await chrome.runtime.sendMessage({ type: "TEST_VPAGE_AUTO_ORDER", tabId });
+    if (!res?.ok) throw new Error(res?.error || "Test tự lên đơn thất bại.");
+    status.textContent = (res.summary || "Đã điền thử form.") + " Không lưu đơn; tab được giữ mở để kiểm tra.";
+    status.className = "status ok";
+  } catch (e) {
+    status.textContent = "Test thất bại: " + e.message;
+    status.className = "status err";
+  }
+});
+
 $("vpageBoxTestBtn").addEventListener("click", async () => {
   const status = $("vpageBoxTestStatus");
   const raw = $("vpageBoxTestUrl").value.trim();
