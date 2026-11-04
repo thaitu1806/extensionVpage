@@ -995,8 +995,10 @@ async function runFill(tabId, options = {}) {
   let initialMessages = [];
   let extracted = null;
 
-  // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.  if (options.orderText) {
-    blog("Manual test: parse nội dung đơn được dán.");    extracted = parseOrderConfirmation(options.orderText, true);
+  // Chế độ test thủ công: parse trực tiếp nội dung người dùng dán, không cần đọc chat/DeepSeek.
+  if (options.orderText) {
+    blog("Manual test: parse nội dung đơn được dán.");
+    extracted = parseOrderConfirmation(options.orderText, true);
     if (!extracted) throw new Error("Không phân tích được đơn. Kiểm tra các trường Người nhận, Số điện thoại, Địa chỉ và Sản phẩm.");
     extracted._source = "manual-test";
   } else {
