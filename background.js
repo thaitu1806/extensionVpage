@@ -2036,7 +2036,8 @@ async function runScanCycle() {
     const markup = buttons.length ? { inline_keyboard: buttons } : undefined;
 
     await processScanNotification({
-      kind: "order",      key,
+      kind: "order",
+      key: "order:" + (conv.id || conv.name || phone || Date.now()),
       text,
       markup,
       phone,
