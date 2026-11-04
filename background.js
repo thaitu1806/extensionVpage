@@ -1357,8 +1357,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
       blog("========== [VPage BOX TEST] BẮT ĐẦU ==========");
       blog(`[BOX TEST] tabId=${tabId}; lấy ${lastN} tin cuối; CHẾ ĐỘ CHỈ ĐỌC, không gửi Telegram/không tạo đơn/không lưu.`);
-      const recentMessages = await getRecentConversationMessages(tabId, lastN);
-      blog(`[BOX TEST] Đọc được ${recentMessages.length}/${lastN} tin.`);
+      // VPage có thể báo tab complete trước khi Angular/API tải xong nội dung hội thoại.
+      // Chờ tối đa 20 giây, thử đọc lại mỗi 1 giây; chỉ tiếp tục phân tích khi có tin.
+      let recentMessages = [];
+      const waitStartedAt = Date.now();
+      let attempt = 0;
+      while (!recentMessages.length && Date.now() - waitStartedAt < 20000) {
+        attempt += 1;
+        recentMessages = await getRecentConversationMessages(tabId, lastN);
+        if (recentMessages.length) break;
+        blog(`[BOX TEST] Lần thử ${attempt}: chưa có tin nhắn; chờ thêm 1 giây...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      blog(`[BOX TEST] Đọc được ${recentMessages.length}/${lastN} tin sau ${Math.round((Date.now() - waitStartedAt) / 1000)} giây chờ.`);
       recentMessages.forEach((m, index) => {
         const rawText = String(m?.text || "");
         const normalized = normalizeTrackingText(rawText);
