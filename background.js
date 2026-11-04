@@ -1911,9 +1911,13 @@ async function runScanCycle() {
       const messageText = String(message.text || "");
       const normalizedMessage = normalizeTrackingText(messageText);
       const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(messageText);
+      // Tin shop có một trong các cụm hậu xử lý này thì dừng quét hội thoại:
+      // không Telegram notify và không tự lên đơn. Vòng lặp đang duyệt từ mới nhất xuống cũ nhất.
       const isTracking = normalizedMessage.includes("theo doi van chuyen")
         || normalizedMessage.includes("ma don hang")
         || normalizedMessage.includes("ma van don")
+        || normalizedMessage.includes("thong bao tu bep")
+        || normalizedMessage.includes("tran trong")
         || /\btracking\b/i.test(messageText)
         || hasTrackingLink;
 
