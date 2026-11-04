@@ -2458,6 +2458,116 @@ async function markConversationUnread(tabId, conversation) {
   }
 }
 
+// Lấy mã đơn vừa tạo từ app-crm-lastest-orders trong iframe tạo đơn.
+async function getLatestCreatedOrderId(tabId, timeout = 20000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    for (const frameId of await getFrameIds(tabId)) {
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId, frameIds: [frameId] },
+          func: function () {
+            const roots = Array.from(document.querySelectorAll(
+              "app-crmadd-v2 app-crm-lastest-orders, app-crm-lastest-orders"
+            ));
+            for (let i = roots.length - 1; i >= 0; i--) {
+              const root = roots[i];
+              const contents = Array.from(root.querySelectorAll(".content"));
+              for (let j = contents.length - 1; j >= 0; j--) {
+                const orderLine = Array.from(contents[j].querySelectorAll("p"))
+                  .find((p) => /^\s*Đơn hàng\s*:/i.test(p.innerText || p.textContent || ""));
+                if (!orderLine) continue;
+                const raw = orderLine.querySelector("strong")?.textContent
+                  || orderLine.innerText || orderLine.textContent || "";
+                const match = String(raw).match(/\b\d{6,}\b/);
+                if (match) return match[0];
+              }
+            }
+            return "";
+          }
+        });
+        const id = String(results?.[0]?.result || "").trim();
+        if (/^\d{6,}$/.test(id)) {
+          blog("Tracking tự động: lấy được mã đơn mới tạo: " + id);
+          return id;
+        }
+      } catch (e) {
+        blog("Tracking tự động: chưa đọc được mã đơn ở frame " + frameId + ": " + e.message);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return "";
+}
+
+// Mở trang chi tiết đơn và lấy URL lịch trình vận chuyển tương ứng đúng mã đơn.
+async function getOrderTrackingUrl(orderId, timeout = 20000) {
+  const detailUrl = "https://nhanh.vn/order/manage/detail?businessId=147168&id="
+    + encodeURIComponent(orderId) + "&tab=info";
+  let detailTab = null;
+  try {
+    detailTab = await chrome.tabs.create({ url: detailUrl, active: false });
+    await waitTabComplete(detailTab.id, 20000);
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: detailTab.id, frameIds: [0] },
+          func: function (expectedId) {
+            const links = Array.from(document.querySelectorAll('a[href*="/tracking"]'));
+            for (const link of links) {
+              try {
+                const url = new URL(link.getAttribute("href") || link.href, location.origin);
+                if (url.pathname !== "/tracking") continue;
+                if (url.searchParams.get("businessId") !== "147168") continue;
+                if (url.searchParams.get("id") !== String(expectedId)) continue;
+                if (!url.searchParams.get("key")) continue;
+                return url.href;
+              } catch (_) {}
+            }
+            return "";
+          },
+          args: [orderId]
+        });
+        const url = String(results?.[0]?.result || "").trim();
+        if (url) return url;
+      } catch (e) {
+        blog("Tracking tự động: chưa đọc được link ở trang chi tiết: " + e.message);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return "";
+  } finally {
+    if (detailTab?.id != null) {
+      try { await chrome.tabs.remove(detailTab.id); } catch (_) {}
+    }
+  }
+}
+
+// Chỉ gọi sau khi auto-save xác nhận thành công. Không gửi link nếu thiếu mã đơn/link.
+async function sendAutoOrderTrackingLink(conversationTabId) {
+  const orderId = await getLatestCreatedOrderId(conversationTabId, 20000);
+  if (!orderId) {
+    blog("Tracking tự động: không tìm thấy mã đơn trong app-crm-lastest-orders; không gửi tin.");
+    return { ok: false, reason: "missing-order-id" };
+  }
+
+  const trackingUrl = await getOrderTrackingUrl(orderId, 20000);
+  if (!trackingUrl) {
+    blog("Tracking tự động: không lấy được link lịch trình cho đơn " + orderId + "; không gửi tin.");
+    return { ok: false, reason: "missing-tracking-url", orderId };
+  }
+
+  const message = "Theo dõi vận chuyển:\nLink Lịch trình\n" + trackingUrl;
+  const result = await sendCourierPhoneMessage(conversationTabId, message);
+  if (result?.ok) {
+    blog("Tracking tự động: đã gửi link lịch trình đơn " + orderId + " vào hội thoại VPage.");
+    return { ok: true, orderId, trackingUrl };
+  }
+  blog("Tracking tự động: gửi link đơn " + orderId + " thất bại: " + (result?.reason || "không rõ lỗi"));
+  return { ok: false, reason: result?.reason || "send-failed", orderId, trackingUrl };
+}
+
 // Mở/điều hướng tab vpage tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
 async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
