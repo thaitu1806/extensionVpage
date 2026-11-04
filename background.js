@@ -88,18 +88,18 @@ function normalizeMoneyFields(obj) {
 // có dấu hiệu thuộc TP.HCM/TP Thủ Đức để tránh xóa nhầm địa danh ở nơi khác.
 function removeObsoleteHcmDistricts(region) {
   if (!region) return "";
-  const isHcm = /hồ\\s*chí\\s*minh|ho\\s*chi\\s*minh|\\bhcm\\b|sài\\s*gòn|sai\\s*gon|thủ\\s*đức|thu\\s*duc/i.test(region);
+  const isHcm = /hồ\s*chí\s*minh|ho\s*chi\s*minh|\\bhcm\\b|sài\s*gòn|sai\s*gon|thủ\s*đức|thu\s*duc/i.test(region);
   if (!isHcm) return region;
 
   const parts = region.split(",").map((part) => part.trim()).filter(Boolean);
-  const obsoleteDistrict = /^(?:quận\\s*[29]|q\\.?\\s*[29])$/i;
+  const obsoleteDistrict = /^(?:quận\s*[29]|q\\.?\s*[29])$/i;
   const cleaned = parts
     .filter((part) => !obsoleteDistrict.test(part))
     // "TP Thủ Đức" là cấp trung gian không cần gửi nguyên cụm khi tìm địa giới.
     // Giữ tên "Thủ Đức" để có thể dùng làm cấp giữa nếu hệ thống cần.
-    .map((part) => /^(?:tp\\.?\\s*)?thủ\\s*đức$/i.test(part) ? "Thủ Đức" : part);
+    .map((part) => /^(?:tp\\.?\s*)?thủ\s*đức$/i.test(part) ? "Thủ Đức" : part);
 
-  return cleaned.join(", ").replace(/\\s{2,}/g, " ").trim();
+  return cleaned.join(", ").replace(/\s{2,}/g, " ").trim();
 }
 function cleanAddress(addr) {
   return String(addr || "")
@@ -164,7 +164,7 @@ function appendMissingHcmProvince(data) {
   ];
   const norm = (value) => String(value || "").toLowerCase()
     .replace(/đ/g, "d").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/[^a-z0-9\\s]/g, " ").replace(/\\s+/g, " ").trim();
+    .replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
   for (const key of ["addressRegion", "addressRegion2"]) {
     const value = String(data[key] || "").trim();
@@ -173,7 +173,7 @@ function appendMissingHcmProvince(data) {
     if (parts.length !== 2) continue;
     const ward = norm(parts[0]);
     const district = norm(parts[1]);
-    const hasWard = /^(phuong|xa|thi tran)\\s+/.test(ward);
+    const hasWard = /^(phuong|xa|thi tran)\s+/.test(ward);
     const isHcmDistrict = hcmDistricts.includes(district);
     const alreadyHasProvince = /ho chi minh|tp hcm|hcm|sai gon/.test(norm(value));
     if (hasWard && isHcmDistrict && !alreadyHasProvince) {
@@ -388,7 +388,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^$\{\}()|[\]\\\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
+    const re = new RegExp(label + "\s*([\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
     const matches = [...t.matchAll(re)];
     return matches.length
       ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
@@ -1427,15 +1427,15 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
           const now = Date.now();
           if (/vừa xong|vua xong|just now|mới đây|moi day/.test(text)) return now;
           if (/^(hôm qua|hom qua|yesterday)$/.test(text)) return now - 24 * 60 * 60 * 1000;
-          let match = text.match(/(\d+)\s*(?:giây|giay|seconds?|secs?)\\s*(?:trước|truoc|ago)?/i);
+          let match = text.match(/(\d+)\s*(?:giây|giay|seconds?|secs?)\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 1000;
-          match = text.match(/(\d+)\s*(?:phút|phut|minutes?|mins?)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:phút|phut|minutes?|mins?)\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 60 * 1000;
-          match = text.match(/(\d+)\s*(?:giờ|gio|hours?|hrs?|h)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:giờ|gio|hours?|hrs?|h)\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 60 * 60 * 1000;
-          match = text.match(/(\d+)\s*(?:ngày|ngay|days?|d)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:ngày|ngay|days?|d)\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 24 * 60 * 60 * 1000;
-          match = text.match(/(\d+)\s*(?:tuần|tuan|weeks?|w)\\s*(?:trước|truoc|ago)?/i);
+          match = text.match(/(\d+)\s*(?:tuần|tuan|weeks?|w)\s*(?:trước|truoc|ago)?/i);
           if (match) return now - Number(match[1]) * 7 * 24 * 60 * 60 * 1000;
           return 0;
         };
@@ -1468,6 +1468,7 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
     });
     const r = (results && results[0] && results[0].result) || { list: [] };
     blog("listConversations: V" + (r.version === "v2" ? "2" : "1") + ", " + scanMode + ", " + r.total + " box.");
+    if (r.version === "v2") blog("V2 activity:", (r.list || []).map((x) => `${x.name}: "${x.timeText}" -> ${x.activityAt ? new Date(x.activityAt).toLocaleTimeString("vi-VN") : "KHÔNG PARSE"}`).join(" | "));
     return r.list || [];
   } catch (e) {
     blog("listConversations lỗi:", e.message);
@@ -2050,7 +2051,7 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
           const candidates = Array.from(document.querySelectorAll("b[class]"))
             .filter((el) => el.offsetParent !== null)
             .map((el) => {
-              const match = String(el.className || "").match(/(?:^|\\s)customer-(\\d+)(?:\\s|$)/);
+              const match = String(el.className || "").match(/(?:^|\s)customer-(\\d+)(?:\s|$)/);
               return match ? { el, conversationId: match[1] } : null;
             })
             .filter(Boolean);
