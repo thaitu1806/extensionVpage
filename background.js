@@ -1362,14 +1362,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       recentMessages.forEach((m, index) => {
         const rawText = String(m?.text || "");
         const normalized = normalizeTrackingText(rawText);
-        const trackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(rawText);
+        const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
         const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
-        const isTracking = trackingWords.length > 0 || trackingLink || /\\btracking\\b/i.test(rawText);
+        const isTracking = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
         const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
           || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-          || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\\s*:/i.test(rawText)
-            && (/\\d+\\s*x\\s*\\S/i.test(rawText) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(rawText)));
-        blog(`[BOX TEST] #${index+1} role=${m?.role||"?"} tracking=${isTracking} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplate} text="${rawText.replace(/\\s+/g," ").slice(0,500)}"`);
+          || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\s*:/i.test(rawText)
+            && (/\d+\s*x\s*\S/i.test(rawText) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(rawText)));
+        blog(`[BOX TEST] #${index+1} role=${m?.role||"?"} tracking=${isTracking} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplate} text="${rawText.replace(/\s+/g," ").slice(0,500)}"`);
       });
       if (!recentMessages.length) throw new Error("Không đọc được tin nhắn. Kiểm tra URL đã mở đúng hội thoại và chat đã tải xong.");
       const latestMessage = recentMessages[recentMessages.length - 1];
@@ -1383,14 +1383,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (m?.role !== "shop") continue;
         const t = String(m.text || "");
         const n = normalizeTrackingText(t);
-        const hasTrackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
+        const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
         const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang") || n.includes("ma van don")
-          || n.includes("thong bao tu bep") || n.includes("tran trong") || /\\btracking\\b/i.test(t) || hasTrackingLink;
+          || n.includes("thong bao tu bep") || n.includes("tran trong") || /\btracking\b/i.test(t) || hasTrackingLink;
         if (isTracking) { latestOrderSignal = "tracking"; blog(`[BOX TEST] Duyệt ngược: gặp tin SHOP hậu xử lý tại index ${i+1}; DỪNG.`); break; }
         const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
           || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
-            && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
+          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
+            && (/\d+\s*x\s*\S/i.test(t) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t)));
         if (isTemplate) { latestOrderSignal = "template"; blog(`[BOX TEST] Duyệt ngược: gặp TEMPLATE tại index ${i+1}; DỪNG, ưu tiên template mới hơn tracking cũ.`); break; }
       }
       blog(`[BOX TEST] latestOrderSignal=${latestOrderSignal || "none"}`);
