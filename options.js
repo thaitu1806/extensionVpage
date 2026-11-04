@@ -39,6 +39,7 @@ const DEFAULTS = {
   autoFillEnabled: false,
   autoOrderOnNotify: false,
   autoSubmitOrder: false,
+  autoSendTrackingLink: false,
   orderTabMode: "default",
   autoOrderStatus: "Mới",
   workerUrl: "",
@@ -88,6 +89,7 @@ function load() {
     $("autoFillEnabled").checked = !!cfg.autoFillEnabled;
     $("autoOrderOnNotify").checked = !!cfg.autoOrderOnNotify;
     $("autoSubmitOrder").checked = !!cfg.autoSubmitOrder;
+    $("autoSendTrackingLink").checked = !!cfg.autoSendTrackingLink;
     $("orderTabMode").value = ["background", "switch"].includes(cfg.orderTabMode) ? cfg.orderTabMode : "default";
     $("autoOrderStatus").value = cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới";
     $("workerUrl").value = cfg.workerUrl || "";
@@ -119,6 +121,7 @@ function save() {
     autoFillEnabled: $("autoFillEnabled").checked,
     autoOrderOnNotify: $("autoOrderOnNotify").checked,
     autoSubmitOrder: $("autoSubmitOrder").checked,
+    autoSendTrackingLink: $("autoSendTrackingLink").checked,
     orderTabMode: ["background", "switch"].includes($("orderTabMode").value) ? $("orderTabMode").value : "default",
     autoOrderStatus: $("autoOrderStatus").value === "Đã xác nhận" ? "Đã xác nhận" : "Mới",
     workerUrl: $("workerUrl").value.trim().replace(/\/+$/, ""),
