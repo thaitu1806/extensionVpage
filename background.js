@@ -1729,7 +1729,7 @@ async function getTelegramConversationLink(tabId, conv) {
     if (context.version === "v2") {
       // Chỉ tạo link khi có đủ composite CID hợp lệ; không thay bằng PSID/SĐT.
       const cid = String(context.cid || "").trim();
-      if (!/^\\d+_\\d+$/.test(cid)) {
+      if (!/^\d+_\d+$/.test(cid)) {
         blog(`Telegram link: V2 chưa có CID composite hợp lệ cho "${conv?.name || ""}".`);
         return "__V2_NO_CID__";
       }
