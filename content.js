@@ -319,22 +319,56 @@ function isOrderFrame() {
 // Click riêng tab điều hướng "Đơn hàng" dạng Angular Material tab (mat-tab-label / role=tab).
 // Dùng khớp CHÍNH XÁC text để không nhầm với các mục menu khác.
 function clickOrderTabStrict() {
-  const tabs = Array.from(document.querySelectorAll(".mat-tab-label, [role='tab']"));
-  for (const el of tabs) {
+  // V2: tab nằm trong nav-tabs-underline, không phải mat-tab.
+  const v2Tabs = Array.from(document.querySelectorAll(
+    ".right-panel-tabs-nav .nav-link"
+  ));
+
+  const v2OrderTab = v2Tabs.find(
+    el => textOf(el).toLowerCase() === "đơn hàng"
+  );
+
+  if (v2OrderTab) {
+    const already = v2OrderTab.classList.contains("active");
+
+    log(`clickOrderTabStrict [V2]: thấy tab 'Đơn hàng', active=${already}`);
+
+    if (!already) {
+      v2OrderTab.click();
+      log("clickOrderTabStrict [V2]: đã click tab Đơn hàng.");
+    }
+
+    return true;
+  }
+
+  // V1 fallback: Angular Material tab.
+  const v1Tabs = Array.from(document.querySelectorAll(
+    ".mat-tab-label, [role='tab']"
+  ));
+
+  for (const el of v1Tabs) {
     const content = el.querySelector(".mat-tab-label-content") || el;
+
     if (textOf(content).toLowerCase() === "đơn hàng") {
       const already = el.getAttribute("aria-selected") === "true"
         || el.classList.contains("mat-tab-label-active");
-      log(`clickOrderTabStrict: thấy tab 'Đơn hàng', active=${already}`);
+
+      log(`clickOrderTabStrict [V1]: thấy tab 'Đơn hàng', active=${already}`);
+
       if (!already) {
         el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         el.click();
-        log("clickOrderTabStrict: đã click.");
       }
+
       return true;
     }
   }
-  log("clickOrderTabStrict: không thấy tab 'Đơn hàng' (mat-tab) ở frame này.");
+
+  // Chỉ log lỗi ở top frame để tránh log nhiễu từ iframe tạo đơn.
+  if (window.top === window.self) {
+    log("clickOrderTabStrict: không tìm thấy tab 'Đơn hàng' (V1/V2).");
+  }
+
   return false;
 }
 
