@@ -1390,6 +1390,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return { ok: true, summary: "Nhánh giao hàng thất bại; đã mô phỏng, không gửi tin." };
       }
       let latestOrderSignal = "";
+      let testOrderText = "";
       for (let i = recentMessages.length - 1; i >= 0; i--) {
         const m = recentMessages[i];
         if (m?.role !== "shop") continue;
@@ -1403,14 +1404,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
           || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
             && (/\d+\s*x\s*\S/i.test(t) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t)));
-        if (isTemplate) { latestOrderSignal = "template"; blog(`[BOX TEST] Duyệt ngược: gặp TEMPLATE tại index ${i+1}; DỪNG, ưu tiên template mới hơn tracking cũ.`); break; }
+        if (isTemplate) { latestOrderSignal = "template"; testOrderText = t; blog(`[BOX TEST] Duyệt ngược: gặp TEMPLATE tại index ${i+1}; DỪNG, dùng đúng raw text của tin này để parse.`); break; }
       }
       blog(`[BOX TEST] latestOrderSignal=${latestOrderSignal || "none"}`);
       if (latestOrderSignal === "tracking") {
         blog("[BOX TEST] KẾT QUẢ: SKIP_NOTIFY_AND_AUTO_ORDER.");
         return { ok: true, summary: "Có tracking/mã đơn mới hơn template: bỏ qua notify và tự lên đơn." };
       }
-      const orderText = latestOrderSignal === "template" ? await getShopOrderText(tabId, lastN) : "";
+      const orderText = latestOrderSignal === "template" ? testOrderText : "";
       blog(`[BOX TEST] COLLECT_SHOP_ORDER: ${orderText ? "có nội dung ("+orderText.length+" ký tự)" : "RỖNG"}`);
       if (!orderText) {
         const contact = findCustomerContactMessage(recentMessages);
