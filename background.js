@@ -1352,11 +1352,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "TEST_TRACKING_LINK") {
     const value = String(msg.url || "").trim();
     const normalized = normalizeTrackingText(value);
-    const isNhanhTrackingUrl = /^https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(value);
+    const isNhanhTrackingUrl = /^https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(value);
     const hasTrackingKeyword = normalized.includes("theo doi van chuyen")
       || normalized.includes("ma don hang")
       || normalized.includes("ma van don")
-      || /\\btracking\\b/i.test(value);
+      || /\btracking\b/i.test(value);
     const detected = isNhanhTrackingUrl || hasTrackingKeyword;
     blog(`[LINK TEST] input="${value.slice(0, 300)}" => detected=${detected}, nhanhTrackingUrl=${isNhanhTrackingUrl}, keyword=${hasTrackingKeyword}`);
     sendResponse({ ok: true, detected, isNhanhTrackingUrl, hasTrackingKeyword,
@@ -1838,14 +1838,14 @@ async function runScanCycle() {
     recentMessages.forEach((m, index) => {
       const rawText = String(m?.text || "");
       const normalized = normalizeTrackingText(rawText);
-      const trackingLink = /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(rawText);
+      const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
       const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don"].filter(x => normalized.includes(x));
-      const isTrackingDebug = trackingWords.length > 0 || trackingLink || /\\btracking\\b/i.test(rawText);
+      const isTrackingDebug = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
       const isTemplateDebug = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
         || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-        || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\\s*:/i.test(rawText)
-          && (/\\d+\\s*x\\s*\\S/i.test(rawText) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(rawText)));
-      blog(`[SCAN DEBUG] #${index + 1} role=${m?.role || "?"} len=${rawText.length} tracking=${isTrackingDebug} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplateDebug} text="${rawText.replace(/\\s+/g, " ").slice(0, 260)}"`);
+        || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\s*:/i.test(rawText)
+          && (/\d+\s*x\s*\S/i.test(rawText) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(rawText)));
+      blog(`[SCAN DEBUG] #${index + 1} role=${m?.role || "?"} len=${rawText.length} tracking=${isTrackingDebug} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplateDebug} text="${rawText.replace(/\s+/g, " ").slice(0, 260)}"`);
     });
     if (!recentMessages.length) blog(`[SCAN DEBUG] "${conv.name}" không nhận được tin nhắn nào từ content.js.`);
 
