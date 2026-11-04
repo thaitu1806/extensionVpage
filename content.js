@@ -2415,6 +2415,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ orderText: findShopOrderMessage(all, lastN) });
     return false;
   }
+  if (msg?.type === "TEST_COLLECT_RECENT_MESSAGES") {
+    // Chỉ dùng cho BOX TEST: đối chiếu nội dung raw của từng bubble với extractor production.
+    // Không thay đổi logic đọc tin nhắn đang chạy thật.
+    const items = Array.from(document.querySelectorAll(".c-msg-item"));
+    const all = items.map((item) => {
+      const bubble = item.querySelector(".c-msg");
+      if (!bubble) return null;
+      const rawText = textOf(bubble) || textOf(item);
+      const extractedText = extractItemText(item);
+      if (!rawText) return null;
+      return {
+        role: bubble.classList.contains("right") ? "shop" : "customer",
+        rawText,
+        extractedText,
+        messageId: item.id || ""
+      };
+    }).filter(Boolean);
+    const lastN = Math.max(1, Math.min(Number(msg.lastN) || 3, 50));
+    sendResponse({ messages: all.slice(-lastN) });
+    return false;
+  }
   if (msg?.type === "COLLECT_RECENT_MESSAGES") {
     const all = readAllMessages();
     const lastN = Math.max(1, Math.min(Number(msg.lastN) || 3, 50));
