@@ -2059,8 +2059,8 @@ async function runScanCycle() {
           m?.role === "shop" && (
             (/XÁC NHẬN ĐƠN HÀNG/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
             || (/Mã đơn hàng/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
-            || (/(Số điện thoại|Điện thoại)/i.test(m.text || "") && /Sản ?phẩm\\s*:/i.test(m.text || "")
-              && (/\\d+\\s*x\\s*\\S/i.test(m.text || "") || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(m.text || "")))
+            || (/(Số điện thoại|Điện thoại)/i.test(m.text || "") && /Sản ?phẩm\s*:/i.test(m.text || "")
+              && (/\d+\s*x\s*\S/i.test(m.text || "") || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(m.text || "")))
           )
         )?.text || "")
       : "";
