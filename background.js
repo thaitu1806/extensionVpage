@@ -1796,7 +1796,7 @@ async function getTelegramConversationLink(tabId, conv) {
         if (!isV2) return { version: "v1", cid: "", link: "" };
 
         // Ưu tiên CID ngay trên URL hội thoại hiện tại; không phụ thuộc clipboard/focus.
-        if (/^\\d+_\\d+$/.test(currentCid)) {
+        if (/^\d+_\d+$/.test(currentCid)) {
           return { version: "v2", cid: currentCid, link: `https://vpage.nhanh.vn/conversation?cid=${currentCid}`, source: "url" };
         }
         if (!copyLink) return { version: "v2", cid: "", reason: "không tìm thấy nút Copy link hội thoại và URL không có CID" };
