@@ -1506,15 +1506,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       blog("========== [VPage FULL AUTO-ORDER TEST] BẮT ĐẦU ==========");
       blog("[FULL TEST] Chế độ thực tế: sẽ trích xuất, điền, LƯU ĐƠN THẬT và gửi link tracking vào đúng hội thoại.");
+      let fullTestSucceeded = false;
       try {
         const lastN = Math.min(Math.max(parseInt(cfg.msgCount, 10) || 3, 1), 10);
         let recentMessages = [];
+        let previousSignature = "";
+        let stableCount = 0;
         const startedAt = Date.now();
-        while (!recentMessages.length && Date.now() - startedAt < 20000) {
-          recentMessages = await getRecentConversationMessages(tabId, lastN);
-          if (!recentMessages.length) await new Promise(resolve => setTimeout(resolve, 1000));
+        // VPage có thể mở khung chat trước nhưng bubble vẫn đang tải.
+        // Chỉ tiếp tục khi có nội dung thật và kết quả ổn định qua 3 lần đọc liên tiếp.
+        while (Date.now() - startedAt < 45000) {
+          const current = await getRecentConversationMessages(tabId, lastN);
+          const signature = current.map((m) => `${m.role || ""}:${m.messageId || ""}:${String(m.text || "").replace(/\s+/g, " ").trim()}`).join("|");
+          const hasRealMessage = current.some((m) => {
+            const t = String(m.text || "").replace(/\s+/g, " ").trim();
+            return t.length > 3 && !/^(?:\.{1,3}|…+)$/i.test(t);
+          });
+          if (hasRealMessage && signature && signature === previousSignature) stableCount++;
+          else stableCount = hasRealMessage ? 1 : 0;
+          previousSignature = signature;
+          recentMessages = current;
+          blog(`[FULL TEST] Đang chờ chat tải ổn định: tin hợp lệ=${current.length}; ổn định=${stableCount}/3; đã chờ=${Math.round((Date.now() - startedAt) / 1000)}s.`);
+          if (stableCount >= 3) break;
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        if (!recentMessages.length) throw new Error("Không đọc được tin nhắn. Kiểm tra URL hội thoại và trạng thái đăng nhập VPage.");
+        if (stableCount < 3 || !recentMessages.length) {
+          throw new Error("Khung chat chưa tải xong hoặc nội dung chưa ổn định sau 45 giây. Giữ tab mở để kiểm tra, không chạy AutoFill.");
+        }
 
         recentMessages.forEach((m, i) => blog(
           `[FULL TEST] #${i + 1} role=${m.role || "?"} text="${String(m.text || "").replace(/\s+/g, " ").slice(0, 400)}"`
@@ -1560,14 +1578,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         result.summary = (result.summary || "Đã lưu đơn.") + "\nĐã gửi link tracking cho khách. Mã đơn: " + tracking.orderId;
         blog("[FULL TEST] HOÀN TẤT: đã lưu đơn " + tracking.orderId + " và gửi link tracking.");
+        fullTestSucceeded = true;
         return result;
       } finally {
         await detachDebugger(tabId);
-        try {
-          await chrome.tabs.remove(tabId);
-          blog("[FULL TEST] Đã đóng tab test VPage.");
-        } catch (e) {
-          blog("[FULL TEST] Không đóng được tab test: " + e.message);
+        if (fullTestSucceeded) {
+          try {
+            await chrome.tabs.remove(tabId);
+            blog("[FULL TEST] Đã đóng tab test VPage sau khi hoàn tất thành công.");
+          } catch (e) {
+            blog("[FULL TEST] Không đóng được tab test: " + e.message);
+          }
+        } else {
+          blog("[FULL TEST] Giữ nguyên tab VPage vì test lỗi/chưa hoàn tất; không đóng để kiểm tra nội dung chat.");
         }
       }
     })().then(sendResponse).catch(e => {
@@ -1852,14 +1875,14 @@ async function getTelegramConversationLink(tabId, conv) {
 async function getRecentConversationMessages(tabId, lastN = 3) {
   for (const frameId of await getFrameIds(tabId)) {
     try {
-      // Dùng cùng nguồn raw bubble đã được BOX TEST xác minh; giữ trường text
-      // để toàn bộ logic notify/fallback/auto-order xử lý thống nhất.
       const res = await sendToFrame(tabId, frameId, { type: "TEST_COLLECT_RECENT_MESSAGES", lastN });
       if (res && Array.isArray(res.messages) && res.messages.length) {
         return res.messages
           .filter((m) => {
-            const raw = String(m?.rawText || "").trim();
-            return raw && !(/Chọn tin nhắn/i.test(raw) && /Sao chép/i.test(raw) && /Ghim/i.test(raw));
+            const raw = String(m?.rawText || "").replace(/\s+/g, " ").trim();
+            // Loại placeholder lúc VPage đang render bubble; không coi dấu "." là tin nhắn.
+            if (!raw || /^(?:\.{1,3}|…+|loading\.*)$/i.test(raw)) return false;
+            return !(/Chọn tin nhắn/i.test(raw) && /Sao chép/i.test(raw) && /Ghim/i.test(raw));
           })
           .map((m) => ({
             role: m.role,
@@ -1873,9 +1896,6 @@ async function getRecentConversationMessages(tabId, lastN = 3) {
   return [];
 }
 
- 
-// Phát hiện đúng TIN NHẮN MỚI NHẤT của shop báo giao hàng thất bại.
-// Tránh kích hoạt chỉ vì một tin cũ có chữ "Trân trọng".
 function isLatestUndeliveredMessage(message) {
   if (!message || message.role !== "shop") return false;
   const text = normalizeTrackingText(message.text || "");
