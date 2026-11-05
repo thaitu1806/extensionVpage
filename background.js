@@ -1782,25 +1782,46 @@ async function getShopOrderText(tabId, lastN = 3) {
 // Lấy CID hội thoại V2 sau khi đã click mở box. VPage dùng khóa composite fanpageId_conversationId.
 async function getTelegramConversationLink(tabId, conv) {
   try {
+    // V2: lấy CID bằng chính nút "Copy link hội thoại" trong toolbar.
+    // Nút này copy URL chuẩn dạng /conversation?cid=fanpageId_conversationId.
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
-      world: "MAIN",
-      func: function () {
-        let cid = "";
-        try { cid = new URL(location.href).searchParams.get("cid") || ""; } catch (_) {}
-        return { version: document.querySelector(".conv-toolbar") ? "v2" : "v1", cid };
+      func: async function () {
+        const copyLink = Array.from(document.querySelectorAll('a[title="Copy link hội thoại"]'))
+          .find((el) => el.isConnected && el.getClientRects().length > 0);
+        const isV2 = !!document.querySelector(".conv-toolbar") || !!copyLink;
+        if (!isV2) {
+          let legacyCid = "";
+          try { legacyCid = new URL(location.href).searchParams.get("cid") || ""; } catch (_) {}
+          return { version: "v1", cid: legacyCid, link: "" };
+        }
+        if (!copyLink) return { version: "v2", cid: "", reason: "không tìm thấy nút Copy link hội thoại" };
+
+        try {
+          copyLink.click();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const copied = String(await navigator.clipboard.readText()).trim();
+          const match = copied.match(/(?:https?:\/\/[^\s]+)?\/conversation\?[^\s]*\bcid=(\d+_\d+)/i)
+            || copied.match(/[?&]cid=(\d+_\d+)/i);
+          return match
+            ? { version: "v2", cid: match[1], link: `https://vpage.nhanh.vn/conversation?cid=${match[1]}` }
+            : { version: "v2", cid: "", copied: copied.slice(0, 250), reason: "nút đã bấm nhưng clipboard không chứa CID composite hợp lệ" };
+        } catch (error) {
+          return { version: "v2", cid: "", reason: "không đọc được clipboard sau khi bấm nút: " + (error?.message || error) };
+        }
       },
       args: []
     });
     const context = results?.[0]?.result || {};
     if (context.version === "v2") {
-      // Chỉ tạo link khi có đủ composite CID hợp lệ; không thay bằng PSID/SĐT.
       const cid = String(context.cid || "").trim();
       if (!/^\d+_\d+$/.test(cid)) {
-        blog(`Telegram link: V2 chưa có CID composite hợp lệ cho "${conv?.name || ""}".`);
+        blog(`Telegram link: V2 lấy CID từ nút Copy link thất bại cho "${conv?.name || ""}": ${context.reason || "CID trống"}.`);
+        if (context.copied) blog("Telegram link: clipboard nhận được: " + context.copied);
         return "__V2_NO_CID__";
       }
-      return `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
+      blog(`Telegram link: lấy CID từ nút Copy link thành công cho "${conv?.name || ""}": ${cid}.`);
+      return context.link || `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
     }
     // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
     return "";
