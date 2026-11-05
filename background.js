@@ -1865,8 +1865,10 @@ async function getTelegramConversationLink(tabId, conv) {
     // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
     return "";
   } catch (e) {
-    blog("Telegram link: không lấy được CID từ avatar:", e.message);
-    return "";
+    // Không fallback sang customerName khi lỗi đọc DOM V2: tránh tạo link sai.
+    // V1 được nhận diện bình thường ở trên và vẫn trả chuỗi rỗng để dùng link legacy.
+    blog("Telegram link: không lấy được CID từ avatar; ẩn link thay vì fallback customerName:", e.message);
+    return "__V2_NO_CID__";
   }
 }
 
