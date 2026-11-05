@@ -1604,7 +1604,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const isNhanhTrackingUrl = /^https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(value);
     const hasTrackingKeyword = normalized.includes("theo doi van chuyen")
       || normalized.includes("ma don hang")
-      || normalized.includes("ma van don")
       || /\btracking\b/i.test(value);
     const detected = isNhanhTrackingUrl || hasTrackingKeyword;
     blog(`[LINK TEST] input="${value.slice(0, 300)}" => detected=${detected}, nhanhTrackingUrl=${isNhanhTrackingUrl}, keyword=${hasTrackingKeyword}`);
