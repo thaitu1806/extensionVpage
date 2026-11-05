@@ -2475,11 +2475,6 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
 
 // Chuyển hội thoại vừa xử lý về Unread bằng đúng một request POST, không retry.
 async function markConversationUnread(tabId, conversation) {
-  if (!conversation?.conversationId) {
-    blog("Unread: thiếu conversationId; bỏ qua cập nhật.");
-    return { ok: false, reason: "missing-conversation-id" };
-  }
-
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
@@ -2499,10 +2494,39 @@ async function markConversationUnread(tabId, conversation) {
         }
         if (!jwt) return { ok: false, reason: "jwt-not-found" };
 
-        const fanpageId = "1688816194510454";
-        const conversationId = String(ctx.conversationId);
-        if (!/^\d+$/.test(conversationId)) {
-          return { ok: false, reason: "invalid-conversation-id" };
+        // V2: dùng cùng hai avatar như bước lấy CID, tuyệt đối không dùng ID hardcode.
+        const customerAvatar = document.querySelector(
+          "img.rounded-circle.cursor-pointer.object-fit-cover.me-2.flex-shrink-0"
+        );
+        const pageAvatar = document.querySelector(
+          "img.page-reply-avatar.rounded-circle.border-0.bg-transparent"
+        );
+
+        let psid = "";
+        try {
+          const src = customerAvatar?.getAttribute("src") || "";
+          psid = new URL(src, location.href).searchParams.get("psid") || "";
+        } catch (_) {}
+
+        const pageSrc = pageAvatar?.getAttribute("src") || "";
+        const avatarFanpageId = pageSrc.match(/graph\.facebook\.com\/(\d+)\/picture(?:\?|$)/i)?.[1] || "";
+
+        // Tương thích V1: nếu không có cấu trúc avatar V2 thì dùng ID đã nhận diện trước đó.
+        const fanpageId = /^\d+$/.test(avatarFanpageId)
+          ? avatarFanpageId
+          : String(ctx?.fanpageId || "");
+        const conversationId = /^\d+$/.test(psid)
+          ? psid
+          : String(ctx?.conversationId || "");
+
+        if (!/^\d+$/.test(fanpageId) || !/^\d+$/.test(conversationId)) {
+          return {
+            ok: false,
+            reason: "invalid-avatar-or-conversation-id",
+            fanpageId: fanpageId || "",
+            psid: psid || "",
+            conversationId: conversationId || ""
+          };
         }
 
         const apiId = fanpageId + "_" + conversationId;
@@ -2510,7 +2534,7 @@ async function markConversationUnread(tabId, conversation) {
           id: apiId,
           status: "1",
           fanpageId,
-          channel: "1"
+          channel: String(ctx?.channel || 1)
         });
 
         // Chỉ gửi MỘT lần. Không tự retry để tránh submit trùng.
@@ -2535,15 +2559,16 @@ async function markConversationUnread(tabId, conversation) {
           apiId,
           fanpageId,
           conversationId,
+          source: /^\d+$/.test(psid) && /^\d+$/.test(avatarFanpageId) ? "avatar" : "legacy-context",
           response: responseBody
         };
       },
-      args: [conversation]
+      args: [conversation || {}]
     });
 
     const result = results?.[0]?.result || { ok: false, reason: "no-script-result" };
     if (result.ok) {
-      blog(`Unread: đã gửi đúng 1 request cho "${conversation.name || ""}", id="${result.apiId}", HTTP ${result.httpStatus}, response=${JSON.stringify(result.response)}.`);
+      blog(`Unread: đã gửi đúng 1 request cho "${conversation?.name || ""}", id="${result.apiId}", source=${result.source}, HTTP ${result.httpStatus}, response=${JSON.stringify(result.response)}.`);
     } else {
       blog("Unread: request duy nhất không thành công:", JSON.stringify(result));
     }
