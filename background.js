@@ -1782,37 +1782,52 @@ async function getShopOrderText(tabId, lastN = 3) {
 // Lấy CID hội thoại V2 sau khi đã click mở box. VPage dùng khóa composite fanpageId_conversationId.
 async function getTelegramConversationLink(tabId, conv) {
   try {
-    // V2: lấy CID bằng chính nút "Copy link hội thoại" trong toolbar.
-    // Nút này copy URL chuẩn dạng /conversation?cid=fanpageId_conversationId.
+    // V2: dựng CID trực tiếp từ avatar khách hàng (PSID) và avatar fanpage.
+    // Không click nút Copy link, không đọc clipboard.
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
-      func: async function () {
-        const copyLink = Array.from(document.querySelectorAll('a[title="Copy link hội thoại"]'))
-          .find((el) => el.isConnected && el.getClientRects().length > 0);
+      func: function () {
         const currentUrl = (() => { try { return new URL(location.href); } catch (_) { return null; } })();
-        const currentCid = currentUrl?.searchParams.get("cid") || "";
-        const isV2 = !!document.querySelector(".conv-toolbar") || !!copyLink
+        const isV2 = !!document.querySelector(".conv-toolbar")
+          || !!document.querySelector("img.page-reply-avatar")
           || currentUrl?.hostname === "vpage.nhanh.vn";
         if (!isV2) return { version: "v1", cid: "", link: "" };
 
-        // Ưu tiên CID ngay trên URL hội thoại hiện tại; không phụ thuộc clipboard/focus.
-        if (/^\d+_\d+$/.test(currentCid)) {
-          return { version: "v2", cid: currentCid, link: `https://vpage.nhanh.vn/conversation?cid=${currentCid}`, source: "url" };
-        }
-        if (!copyLink) return { version: "v2", cid: "", reason: "không tìm thấy nút Copy link hội thoại và URL không có CID" };
+        const customerAvatar = document.querySelector(
+          "img.rounded-circle.cursor-pointer.object-fit-cover.me-2.flex-shrink-0"
+        );
+        const pageAvatar = document.querySelector(
+          "img.page-reply-avatar.rounded-circle.border-0.bg-transparent"
+        );
 
+        let psid = "";
         try {
-          copyLink.click();
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          const copied = String(await navigator.clipboard.readText()).trim();
-          const match = copied.match(/(?:https?:\/\/[^\s]+)?\/conversation\?[^\s]*\bcid=(\d+_\d+)/i)
-            || copied.match(/[?&]cid=(\d+_\d+)/i);
-          return match
-            ? { version: "v2", cid: match[1], link: `https://vpage.nhanh.vn/conversation?cid=${match[1]}` }
-            : { version: "v2", cid: "", copied: copied.slice(0, 250), reason: "nút đã bấm nhưng clipboard không chứa CID composite hợp lệ" };
-        } catch (error) {
-          return { version: "v2", cid: "", reason: "không đọc được clipboard sau khi bấm nút: " + (error?.message || error) };
+          const src = customerAvatar?.getAttribute("src") || "";
+          psid = new URL(src, location.href).searchParams.get("psid") || "";
+        } catch (_) {}
+
+        const pageSrc = pageAvatar?.getAttribute("src") || "";
+        const fanpageId = pageSrc.match(/graph\.facebook\.com\/(\d+)\/picture(?:\?|$)/i)?.[1] || "";
+
+        if (!/^\d+$/.test(fanpageId) || !/^\d+$/.test(psid)) {
+          return {
+            version: "v2",
+            cid: "",
+            fanpageId,
+            psid,
+            reason: "Không trích xuất được fanpageId hoặc PSID từ hai avatar"
+          };
         }
+
+        const cid = fanpageId + "_" + psid;
+        return {
+          version: "v2",
+          cid,
+          fanpageId,
+          psid,
+          link: "https://vpage.nhanh.vn/conversation?cid=" + cid,
+          source: "avatar"
+        };
       },
       args: []
     });
@@ -1820,17 +1835,16 @@ async function getTelegramConversationLink(tabId, conv) {
     if (context.version === "v2") {
       const cid = String(context.cid || "").trim();
       if (!/^\d+_\d+$/.test(cid)) {
-        blog(`Telegram link: V2 lấy CID từ nút Copy link thất bại cho "${conv?.name || ""}": ${context.reason || "CID trống"}.`);
-        if (context.copied) blog("Telegram link: clipboard nhận được: " + context.copied);
+        blog(`Telegram link: V2 trích xuất CID từ avatar thất bại cho "${conv?.name || ""}": ${context.reason || "CID trống"}; fanpageId=${context.fanpageId || "(trống)"}; PSID=${context.psid || "(trống)"}.`);
         return "__V2_NO_CID__";
       }
-      blog(`Telegram link: lấy CID ${context.source === "url" ? "từ URL hiện tại" : "từ nút Copy link"} thành công cho "${conv?.name || ""}": ${cid}.`);
-      return context.link || `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
+      blog(`Telegram link: dựng CID từ avatar thành công cho "${conv?.name || ""}": fanpageId=${context.fanpageId}, PSID=${context.psid}, CID=${cid}.`);
+      return context.link;
     }
     // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
     return "";
   } catch (e) {
-    blog("Telegram link: không lấy được CID hội thoại:", e.message);
+    blog("Telegram link: không lấy được CID từ avatar:", e.message);
     return "";
   }
 }
