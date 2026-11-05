@@ -1486,47 +1486,86 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const tabId = Number(msg.tabId);
       if (!Number.isInteger(tabId)) throw new Error("tabId không hợp lệ.");
-      const cfg = await chrome.storage.local.get({ tgMsgCount: 3 });
-      const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
-      blog("========== [VPage AUTO-ORDER BOX TEST] BẮT ĐẦU ==========");
-      blog("[AUTO-ORDER TEST] Chế độ TEST: chỉ trích xuất và điền form; KHÔNG lưu đơn/Telegram/nhắn khách.");
-      const recentMessages = await getRecentConversationMessages(tabId, lastN);
-      if (!recentMessages.length) throw new Error("Không đọc được tin nhắn trong box.");
-      recentMessages.forEach((m, i) => blog(
-        `[AUTO-ORDER TEST] #${i + 1} role=${m.role || "?"} text="${String(m.rawText || m.text || "").replace(/\\s+/g, " ").slice(0, 400)}"`
-      ));
-      const latestMessage = recentMessages[recentMessages.length - 1];
-      if (isLatestUndeliveredMessage(latestMessage)) {
-        throw new Error("Box có tin giao hàng thất bại mới nhất; test lên đơn đã dừng.");
+      const cfg = await chrome.storage.local.get({
+        autoSubmitOrder: false,
+        autoSendTrackingLink: false,
+        msgCount: "3"
+      });
+      if (cfg.autoSubmitOrder !== true) {
+        throw new Error("Hãy bật 'Tự động bấm Lưu/gửi đơn' trong Cấu hình trước khi chạy test.");
       }
-      let signal = "";
-      let orderText = "";
-      for (let i = recentMessages.length - 1; i >= 0; i--) {
-        const m = recentMessages[i];
-        if (m?.role !== "shop") continue;
-        const t = String(m.rawText || m.text || "");
-        const n = normalizeTrackingText(t);
-        const tracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
-          || n.includes("ma van don") || n.includes("thong bao tu bep")
-          || n.includes("tran trong") || /\\btracking\\b/i.test(t)
-          || /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
-        if (tracking) { signal = "tracking"; break; }
-        const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-          || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
-            && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
-        if (template) { signal = "template"; orderText = t; break; }
+      if (cfg.autoSendTrackingLink !== true) {
+        throw new Error("Hãy bật 'Tự động gửi link Theo dõi vận chuyển' trong Cấu hình trước khi chạy test.");
       }
-      blog(`[AUTO-ORDER TEST] latestOrderSignal=${signal || "none"}`);
-      if (signal === "tracking") throw new Error("Tin tracking/hậu xử lý mới hơn template; không lên đơn.");
-      if (!signal) throw new Error("Không tìm thấy template xác nhận đơn trong các tin gần nhất.");
-      blog("[AUTO-ORDER TEST] Template được chọn: " + orderText.slice(0, 1200));
-      const result = await runFill(tabId, { mode: "test", testMessages: recentMessages, orderText });
-      blog("[AUTO-ORDER TEST] KẾT QUẢ: " + JSON.stringify(result));
-      blog("[AUTO-ORDER TEST] Hoàn tất. Form được giữ nguyên để kiểm tra; không bấm Lưu.");
-      return result;
+
+      blog("========== [VPage FULL AUTO-ORDER TEST] BẮT ĐẦU ==========");
+      blog("[FULL TEST] Chế độ thực tế: sẽ trích xuất, điền, LƯU ĐƠN THẬT và gửi link tracking vào đúng hội thoại.");
+      try {
+        const lastN = Math.min(Math.max(parseInt(cfg.msgCount, 10) || 3, 1), 10);
+        let recentMessages = [];
+        const startedAt = Date.now();
+        while (!recentMessages.length && Date.now() - startedAt < 20000) {
+          recentMessages = await getRecentConversationMessages(tabId, lastN);
+          if (!recentMessages.length) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        if (!recentMessages.length) throw new Error("Không đọc được tin nhắn. Kiểm tra URL hội thoại và trạng thái đăng nhập VPage.");
+
+        recentMessages.forEach((m, i) => blog(
+          `[FULL TEST] #${i + 1} role=${m.role || "?"} text="${String(m.text || "").replace(/\\s+/g, " ").slice(0, 400)}"`
+        ));
+        const latestMessage = recentMessages[recentMessages.length - 1];
+        if (isLatestUndeliveredMessage(latestMessage)) {
+          throw new Error("Tin nhắn mới nhất là thông báo giao hàng thất bại; dừng để tránh tạo đơn trùng.");
+        }
+
+        let signal = "";
+        for (let i = recentMessages.length - 1; i >= 0; i--) {
+          const m = recentMessages[i];
+          if (m?.role !== "shop") continue;
+          const t = String(m.text || "");
+          const n = normalizeTrackingText(t);
+          const tracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
+            || n.includes("ma van don") || n.includes("thong bao tu bep")
+            || n.includes("tran trong") || /\\btracking\\b/i.test(t)
+            || /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
+          if (tracking) { signal = "tracking"; break; }
+          const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+            || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
+            || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
+              && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
+          if (template) { signal = "template"; break; }
+        }
+        if (signal === "tracking") throw new Error("Đã có tin tracking/hậu xử lý mới hơn; không tạo đơn trùng.");
+        if (signal !== "template") throw new Error("Không tìm thấy mẫu xác nhận đơn hợp lệ trong các tin nhắn gần nhất.");
+
+        blog("[FULL TEST] Đã xác định có template đơn hợp lệ. Chạy đúng runFill(mode=webhook) để điền và tự lưu.");
+        const result = await runFill(tabId, { mode: "webhook" });
+        blog("[FULL TEST] Kết quả runFill: " + JSON.stringify(result).slice(0, 1200));
+        if (result?.submitted !== true) {
+          throw new Error(result?.summary || result?.error || "Đơn chưa được xác nhận lưu thành công; không gửi link tracking.");
+        }
+
+        blog("[FULL TEST] Xác nhận đã lưu đơn thành công. Bắt đầu lấy link lịch trình.");
+        const tracking = await sendAutoOrderTrackingLink(tabId);
+        result.trackingLinkSent = !!tracking?.ok;
+        if (!tracking?.ok) {
+          result.trackingLinkError = tracking?.reason || "tracking-link-failed";
+          throw new Error("Đơn đã lưu thành công nhưng gửi link tracking thất bại: " + result.trackingLinkError);
+        }
+        result.summary = (result.summary || "Đã lưu đơn.") + "\\nĐã gửi link tracking cho khách. Mã đơn: " + tracking.orderId;
+        blog("[FULL TEST] HOÀN TẤT: đã lưu đơn " + tracking.orderId + " và gửi link tracking.");
+        return result;
+      } finally {
+        await detachDebugger(tabId);
+        try {
+          await chrome.tabs.remove(tabId);
+          blog("[FULL TEST] Đã đóng tab test VPage.");
+        } catch (e) {
+          blog("[FULL TEST] Không đóng được tab test: " + e.message);
+        }
+      }
     })().then(sendResponse).catch(e => {
-      blog("[AUTO-ORDER TEST] DỪNG/LỖI: " + (e?.stack || e?.message || e));
+      blog("[FULL TEST] DỪNG/LỖI: " + (e?.stack || e?.message || e));
       sendResponse({ ok: false, error: e.message });
     });
     return true;
