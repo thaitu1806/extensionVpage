@@ -2020,13 +2020,23 @@ async function processScanNotification(item, cfg, notified) {
   blog(`Tuần tự: đã gửi Telegram loại=${item.kind} cho "${item.conversationName}".`);
 
   // Hoàn tất tự lên đơn của box hiện tại trước khi chuyển sang box kế tiếp.
-  if (item.kind === "order" && cfg.autoOrderOnNotify && cfg.autoFillEnabled && item.phone) {
+  // V2 dùng CID composite để mở đúng hội thoại; không dùng SĐT làm khóa tìm box.
+  if (item.kind === "order" && cfg.autoOrderOnNotify && cfg.autoFillEnabled) {
     try {
-      blog(`Tuần tự AutoOrder: bắt đầu lên đơn cho ${item.phone} trước khi chuyển box.`);
-      const autoResult = await fillOrderByPhone(item.phone);
-      blog(`Tuần tự AutoOrder: kết quả lên đơn ${item.phone}: ${JSON.stringify(autoResult).slice(0, 300)}`);
+      if (item.cid && /^\\d+_\\d+$/.test(String(item.cid))) {
+        blog(`Tuần tự AutoOrder: kích hoạt theo CID ${item.cid} trước khi chuyển box.`);
+        const autoResult = await fillOrderByCID(String(item.cid));
+        blog(`Tuần tự AutoOrder: kết quả CID ${item.cid}: ${JSON.stringify(autoResult).slice(0, 300)}`);
+      } else if (item.legacyPhone) {
+        // Giữ tương thích V1; riêng V2 không được fallback sang SĐT.
+        blog(`Tuần tự AutoOrder V1: bắt đầu theo SĐT ${item.legacyPhone}.`);
+        const autoResult = await fillOrderByPhone(item.legacyPhone);
+        blog(`Tuần tự AutoOrder V1: kết quả ${item.legacyPhone}: ${JSON.stringify(autoResult).slice(0, 300)}`);
+      } else {
+        blog(`Tuần tự AutoOrder: không có CID composite hợp lệ cho "${item.conversationName}"; không fallback sang SĐT để tránh mở nhầm box.`);
+      }
     } catch (e) {
-      blog(`Tuần tự AutoOrder: lên đơn lỗi cho ${item.phone}: ${e?.message || e}`);
+      blog(`Tuần tự AutoOrder: kích hoạt lên đơn lỗi cho "${item.conversationName}": ${e?.message || e}`);
     }
   } else if (item.kind === "order" && cfg.autoOrderOnNotify && !cfg.autoFillEnabled) {
     blog("AutoOrderOnNotify đang bật nhưng autoFillEnabled đang tắt; bỏ qua tự lên đơn.");
@@ -2287,9 +2297,12 @@ async function runScanCycle() {
     // Parse thông tin đơn để định dạng nội dung Telegram.
     const parsed = parseOrderConfirmation(orderText);
 
-    // Link mở đúng hội thoại để lên đơn (theo SĐT). Dùng cho nút "Lên đơn" và
-    // sau này cho trigger lên đơn tự động.
+    // V2 lấy CID composite từ URL hội thoại đang mở; SĐT chỉ là dữ liệu giao hàng.
+    // V1 tiếp tục dùng đường dẫn tìm theo SĐT để giữ tương thích.
     const phone = parsed && parsed.phone ? parsed.phone : "";
+    const cidMatch = String(v2ConversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/);
+    const conversationCid = cidMatch ? cidMatch[1] : "";
+    const isV2Conversation = v2ConversationUrl === "__V2_NO_CID__" || !!cidMatch;
     const orderUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || (phone
       ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`
       : ""));
@@ -2297,11 +2310,8 @@ async function runScanCycle() {
     // Gửi ĐẦY ĐỦ: trường đã parse + nguyên văn khối đơn + link lên đơn.
     const text = formatOrderForTelegram(parsed, conv.name, orderText, orderUrl);
 
-    // Nút bấm:
-    //  - "Mở hội thoại" (url): mở trực tiếp trên máy đang có extension.
-    //  - "Lên đơn" (callback): bấm trên ĐIỆN THOẠI -> Telegram gọi webhook
-    //    Worker -> Worker ghi lệnh {phone} vào KV -> extension poll /pull rồi
-    //    lên đơn. Luôn hiện khi có SĐT và đã cấu hình Worker URL.
+    // Nút callback Telegram giữ nguyên giao thức Worker hiện tại (fill:SĐT).
+    // Tự động lên đơn tại máy extension được kích hoạt riêng bằng CID ở processScanNotification.
     const buttons = [];
     if (phone && cfg.workerUrl) {
       buttons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${phone}` }]);
@@ -2317,6 +2327,8 @@ async function runScanCycle() {
       text,
       markup,
       phone,
+      cid: conversationCid,
+      legacyPhone: !isV2Conversation ? phone : "",
       conversationName: conv.name
     }, cfg, notified);
     blog(`Quét: "${conv.name}" - đã xử lý xong box (Telegram và luồng tự lên đơn nếu bật); mới chuyển sang box tiếp theo.`);
@@ -2607,7 +2619,70 @@ async function sendAutoOrderTrackingLink(conversationTabId) {
   return { ok: false, reason: result?.reason || "send-failed", orderId, trackingUrl };
 }
 
-// Mở/điều hướng tab vpage tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
+// Mở thẳng hội thoại V2 bằng CID composite rồi chạy đúng luồng AutoFill hiện tại.
+async function fillOrderByCID(cid) {
+  const compositeCid = String(cid || "").trim();
+  if (!/^\\d+_\\d+$/.test(compositeCid)) {
+    throw new Error("CID composite không hợp lệ; yêu cầu dạng fanpageId_conversationId.");
+  }
+  const [fanpageId, conversationId] = compositeCid.split("_");
+  const targetUrl = `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(compositeCid)}`;
+  const cfg = await chrome.storage.local.get({
+    orderTabMode: "default",
+    autoSendTrackingLink: false
+  });
+  const mode = ["background", "switch"].includes(cfg.orderTabMode) ? cfg.orderTabMode : "default";
+  const activateImmediately = mode === "default";
+  blog(`AutoFill CID: orderTabMode=${mode}; mở hội thoại CID ${compositeCid}.`);
+  const tab = await chrome.tabs.create({ url: targetUrl, active: activateImmediately });
+  const conversation = { name: compositeCid, conversationId, fanpageId, channel: 1 };
+  let res;
+  try {
+    await waitTabComplete(tab.id, 20000);
+    if (mode === "switch") {
+      await chrome.tabs.update(tab.id, { active: true });
+      blog(`AutoFill CID: tab đơn #${tab.id} đã tải xong; chuyển focus sang Nhanh.vn.`);
+    }
+    await new Promise((r) => setTimeout(r, 4000));
+    // Xác nhận URL vẫn đang ở đúng CID trước khi chạy AutoFill.
+    const currentTab = await chrome.tabs.get(tab.id);
+    const currentUrl = String(currentTab?.url || "");
+    const currentCid = currentUrl.match(/[?&]cid=(\\d+_\\d+)/)?.[1] || "";
+    if (currentCid !== compositeCid) {
+      throw new Error(`VPage không mở đúng CID. Yêu cầu=${compositeCid}; thực tế=${currentCid || "(trống)"}.`);
+    }
+
+    blog(`AutoFill CID: bắt đầu runFill cho tab #${tab.id}, CID ${compositeCid}.`);
+    res = await runFill(tab.id, { mode: "webhook" });
+    blog(`AutoFill CID: runFill xong -> ${JSON.stringify(res).slice(0, 500)}`);
+
+    if (res?.submitted === true && cfg.autoSendTrackingLink === true) {
+      try {
+        blog("Tracking tự động: đơn đã lưu; bắt đầu lấy link lịch trình và gửi vào hội thoại.");
+        const trackingResult = await sendAutoOrderTrackingLink(tab.id);
+        res.trackingLinkSent = !!trackingResult?.ok;
+        if (!trackingResult?.ok) res.trackingLinkError = trackingResult?.reason || "tracking-link-failed";
+      } catch (e) {
+        res.trackingLinkSent = false;
+        res.trackingLinkError = e?.message || String(e);
+        blog("Tracking tự động: lỗi ngoài dự kiến: " + res.trackingLinkError);
+      }
+    } else if (res?.submitted === true) {
+      blog("Tracking tự động: đang tắt trong Cấu hình; bỏ qua gửi link.");
+    }
+    return res;
+  } finally {
+    await markConversationUnread(tab.id, conversation);
+    try {
+      await chrome.tabs.remove(tab.id);
+      blog(`AutoFill CID: đã đóng tab xử lý #${tab.id}.`);
+    } catch (e) {
+      blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
+    }
+  }
+}
+
+// Mở/điều hướng tab V1 tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
 async function fillOrderByPhone(phone) {
   const targetUrl = `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`;
   // Luôn dùng tab riêng; chế độ background không lấy focus khỏi tab người dùng.
