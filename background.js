@@ -1472,10 +1472,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const parsed = parseOrderConfirmation(orderText);
       blog("[BOX TEST] PARSE RESULT: " + JSON.stringify(parsed));
       const phone = parsed?.phone || "";
-      const orderUrl = phone ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}` : "";
+      const conversationUrl = await getTelegramConversationLink(tabId, { name: "BOX TEST" });
+      const cidMatch = String(conversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/);
+      const cid = cidMatch?.[1] || "";
+      const orderUrl = conversationUrl === "__V2_NO_CID__" ? "" : (conversationUrl || (phone
+        ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`
+        : ""));
       const hasWorker = !!cfg.workerUrl;
-      blog(`[BOX TEST] TELEGRAM: dự kiến notify đơn chuẩn; phone=${phone || "(trống)"}; nút Lên đơn=${phone && hasWorker ? "HIỆN" : "ẨN"}; nút Mở hội thoại=${orderUrl ? "HIỆN" : "ẨN"}.`);
-      blog(`[BOX TEST] AUTO ORDER GATES: autoOrderOnNotify=${!!cfg.autoOrderOnNotify}; autoFillEnabled=${!!cfg.autoFillEnabled}; phone=${!!phone}; kết quả=${cfg.autoOrderOnNotify && cfg.autoFillEnabled && phone ? "ĐỦ ĐIỀU KIỆN gọi fillOrderByPhone" : "KHÔNG gọi fillOrderByPhone"}.`);
+      blog(`[BOX TEST] TELEGRAM: dự kiến notify đơn chuẩn; CID=${cid || "(không có)"}; phone=${phone || "(trống)"}; nút Lên đơn=${phone && hasWorker ? "HIỆN" : "ẨN"}; nút Mở hội thoại=${orderUrl ? "HIỆN" : "ẨN"}.`);
+      const canAutoOrder = cfg.autoOrderOnNotify && cfg.autoFillEnabled && (cid || (conversationUrl !== "__V2_NO_CID__" && !cid && phone));
+      blog(`[BOX TEST] AUTO ORDER GATES: autoOrderOnNotify=${!!cfg.autoOrderOnNotify}; autoFillEnabled=${!!cfg.autoFillEnabled}; CID=${cid || "(trống)"}; kết quả=${canAutoOrder ? (cid ? "ĐỦ ĐIỀU KIỆN gọi fillOrderByCID" : "V1 đủ điều kiện gọi fillOrderByPhone") : "KHÔNG kích hoạt (thiếu CID V2 hoặc dữ liệu V1)"}.`);
       if (cfg.autoSubmitOrder) blog("[BOX TEST] autoSubmitOrder đang bật; TEST tuyệt đối không submit.");
       blog("[BOX TEST] KẾT THÚC: không gọi tgSend/processScanNotification/fillOrderByPhone; không thay đổi storage.");
       return { ok: true, summary: "Đã mô phỏng luồng template/parse/notify/auto-order trong console; không phát sinh thao tác thật." };
