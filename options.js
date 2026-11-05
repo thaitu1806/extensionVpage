@@ -32,7 +32,7 @@ const DEFAULTS = {
   scanMode: "unread",
   scanStrategy: "fixed",
   scanRecentCount: 5,
-  bizAiAutoContinue: true,
+  bizAiAutoContinue: false,
   scanIntervalMinutes: 3,
   tgToken: "",
   tgChatId: "",
@@ -82,7 +82,7 @@ function load() {
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
     $("scanStrategy").value = cfg.scanStrategy === "incremental" ? "incremental" : "fixed";
     $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
-    $("bizAiAutoContinue").checked = cfg.bizAiAutoContinue !== false;
+    $("bizAiAutoContinue").checked = cfg.bizAiAutoContinue === true;
     $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
     $("tgChatId").value = cfg.tgChatId || "";
