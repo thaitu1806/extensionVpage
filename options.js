@@ -263,7 +263,7 @@ $("trackingLinkTestBtn").addEventListener("click", () => {
 $("vpageAutoOrderTestBtn").addEventListener("click", async () => {
   const status = $("vpageAutoOrderTestStatus");
   const raw = $("vpageBoxTestUrl").value.trim();
-  status.textContent = "Đang mở box và chạy thử trích xuất/điền form...";
+  status.textContent = "Đang chạy FULL TEST: trích xuất, điền, lưu đơn và gửi link tracking...";
   status.className = "status";
   try {
     const url = new URL(raw);
@@ -285,10 +285,10 @@ $("vpageAutoOrderTestBtn").addEventListener("click", async () => {
     await new Promise(r => setTimeout(r, 2500));
     const res = await chrome.runtime.sendMessage({ type: "TEST_VPAGE_AUTO_ORDER", tabId });
     if (!res?.ok) throw new Error(res?.error || "Test tự lên đơn thất bại.");
-    status.textContent = (res.summary || "Đã điền thử form.") + " Không lưu đơn; tab được giữ mở để kiểm tra.";
+    status.textContent = res.summary || "Đã lưu đơn và gửi link tracking thành công. Tab test đã đóng.";
     status.className = "status ok";
   } catch (e) {
-    status.textContent = "Test thất bại: " + e.message;
+    status.textContent = "FULL TEST dừng/lỗi: " + e.message;
     status.className = "status err";
   }
 });
