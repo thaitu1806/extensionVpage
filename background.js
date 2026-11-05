@@ -1418,7 +1418,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const extractedText = String(m?.extractedText || "");
         const normalized = normalizeTrackingText(rawText);
         const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
-        const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
+        const trackingWords = ["theo doi van chuyen", "ma don hang", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
         const isTracking = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
         const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
           || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
@@ -1440,7 +1440,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const t = String(m.rawText || m.text || "");
         const n = normalizeTrackingText(t);
         const hasTrackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
-        const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang") || n.includes("ma van don")
+        const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
           || n.includes("thong bao tu bep") || n.includes("tran trong") || /\btracking\b/i.test(t) || hasTrackingLink;
         if (isTracking) { latestOrderSignal = "tracking"; blog(`[BOX TEST] Duyệt ngược: gặp tin SHOP hậu xử lý tại index ${i+1}; DỪNG.`); break; }
         const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
@@ -1548,7 +1548,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const t = String(m.text || "");
           const n = normalizeTrackingText(t);
           const tracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
-            || n.includes("ma van don") || n.includes("thong bao tu bep")
+            || n.includes("thong bao tu bep")
             || n.includes("tran trong") || /\btracking\b/i.test(t)
             || /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
           if (tracking) { signal = "tracking"; break; }
@@ -2180,7 +2180,7 @@ async function runScanCycle() {
       const rawText = String(m?.text || "");
       const normalized = normalizeTrackingText(rawText);
       const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
-      const trackingWords = ["theo doi van chuyen", "ma don hang", "ma van don"].filter(x => normalized.includes(x));
+      const trackingWords = ["theo doi van chuyen", "ma don hang"].filter(x => normalized.includes(x));
       const isTrackingDebug = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
       const isTemplateDebug = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
         || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
@@ -2256,7 +2256,6 @@ async function runScanCycle() {
       // không Telegram notify và không tự lên đơn. Vòng lặp đang duyệt từ mới nhất xuống cũ nhất.
       const isTracking = normalizedMessage.includes("theo doi van chuyen")
         || normalizedMessage.includes("ma don hang")
-        || normalizedMessage.includes("ma van don")
         || normalizedMessage.includes("thong bao tu bep")
         || normalizedMessage.includes("tran trong")
         || /\btracking\b/i.test(messageText)
