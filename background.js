@@ -410,7 +410,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^$\{\}()|[\]\\\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\s*([\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
     const matches = [...t.matchAll(re)];
     return matches.length
       ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
@@ -1789,13 +1789,17 @@ async function getTelegramConversationLink(tabId, conv) {
       func: async function () {
         const copyLink = Array.from(document.querySelectorAll('a[title="Copy link hội thoại"]'))
           .find((el) => el.isConnected && el.getClientRects().length > 0);
-        const isV2 = !!document.querySelector(".conv-toolbar") || !!copyLink;
-        if (!isV2) {
-          let legacyCid = "";
-          try { legacyCid = new URL(location.href).searchParams.get("cid") || ""; } catch (_) {}
-          return { version: "v1", cid: legacyCid, link: "" };
+        const currentUrl = (() => { try { return new URL(location.href); } catch (_) { return null; } })();
+        const currentCid = currentUrl?.searchParams.get("cid") || "";
+        const isV2 = !!document.querySelector(".conv-toolbar") || !!copyLink
+          || currentUrl?.hostname === "vpage.nhanh.vn";
+        if (!isV2) return { version: "v1", cid: "", link: "" };
+
+        // Ưu tiên CID ngay trên URL hội thoại hiện tại; không phụ thuộc clipboard/focus.
+        if (/^\\d+_\\d+$/.test(currentCid)) {
+          return { version: "v2", cid: currentCid, link: `https://vpage.nhanh.vn/conversation?cid=${currentCid}`, source: "url" };
         }
-        if (!copyLink) return { version: "v2", cid: "", reason: "không tìm thấy nút Copy link hội thoại" };
+        if (!copyLink) return { version: "v2", cid: "", reason: "không tìm thấy nút Copy link hội thoại và URL không có CID" };
 
         try {
           copyLink.click();
@@ -1820,7 +1824,7 @@ async function getTelegramConversationLink(tabId, conv) {
         if (context.copied) blog("Telegram link: clipboard nhận được: " + context.copied);
         return "__V2_NO_CID__";
       }
-      blog(`Telegram link: lấy CID từ nút Copy link thành công cho "${conv?.name || ""}": ${cid}.`);
+      blog(`Telegram link: lấy CID ${context.source === "url" ? "từ URL hiện tại" : "từ nút Copy link"} thành công cho "${conv?.name || ""}": ${cid}.`);
       return context.link || `https://vpage.nhanh.vn/conversation?cid=${encodeURIComponent(cid)}`;
     }
     // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
