@@ -1511,7 +1511,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!recentMessages.length) throw new Error("Không đọc được tin nhắn. Kiểm tra URL hội thoại và trạng thái đăng nhập VPage.");
 
         recentMessages.forEach((m, i) => blog(
-          `[FULL TEST] #${i + 1} role=${m.role || "?"} text="${String(m.text || "").replace(/\\s+/g, " ").slice(0, 400)}"`
+          `[FULL TEST] #${i + 1} role=${m.role || "?"} text="${String(m.text || "").replace(/\s+/g, " ").slice(0, 400)}"`
         ));
         const latestMessage = recentMessages[recentMessages.length - 1];
         if (isLatestUndeliveredMessage(latestMessage)) {
@@ -1526,13 +1526,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const n = normalizeTrackingText(t);
           const tracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
             || n.includes("ma van don") || n.includes("thong bao tu bep")
-            || n.includes("tran trong") || /\\btracking\\b/i.test(t)
-            || /https?:\\/\\/(?:www\\.)?nhanh\\.vn\\/tracking(?:[/?#]|$)/i.test(t);
+            || n.includes("tran trong") || /\btracking\b/i.test(t)
+            || /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
           if (tracking) { signal = "tracking"; break; }
           const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
             || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-            || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\\s*:/i.test(t)
-              && (/\\d+\\s*x\\s*\\S/i.test(t) || /\\bcombo\\s+\\d+\\s*(?:túi|goi|hộp|hop|combo|phần|phan)\\b/i.test(t)));
+            || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
+              && (/\d+\s*x\s*\S/i.test(t) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t)));
           if (template) { signal = "template"; break; }
         }
         if (signal === "tracking") throw new Error("Đã có tin tracking/hậu xử lý mới hơn; không tạo đơn trùng.");
@@ -2237,7 +2237,7 @@ async function runScanCycle() {
         continue;
       }
 
-      blog(`[SCAN DEBUG] "${conv.name}" FALLBACK_NOTIFY phone=${contact.phone}; text="${String(contact.text || "").replace(/\\s+/g, " ").slice(0, 220)}"`);
+      blog(`[SCAN DEBUG] "${conv.name}" FALLBACK_NOTIFY phone=${contact.phone}; text="${String(contact.text || "").replace(/\s+/g, " ").slice(0, 220)}"`);
       const fallbackKey = "contact:" + contact.phone;
       if (notified[fallbackKey]) {
         blog(`Quét: "${conv.name}" - cảnh báo khách ${contact.phone} đã gửi trước đó, bỏ qua.`);
