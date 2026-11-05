@@ -1552,7 +1552,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           result.trackingLinkError = tracking?.reason || "tracking-link-failed";
           throw new Error("Đơn đã lưu thành công nhưng gửi link tracking thất bại: " + result.trackingLinkError);
         }
-        result.summary = (result.summary || "Đã lưu đơn.") + "\\nĐã gửi link tracking cho khách. Mã đơn: " + tracking.orderId;
+        result.summary = (result.summary || "Đã lưu đơn.") + "\nĐã gửi link tracking cho khách. Mã đơn: " + tracking.orderId;
         blog("[FULL TEST] HOÀN TẤT: đã lưu đơn " + tracking.orderId + " và gửi link tracking.");
         return result;
       } finally {
