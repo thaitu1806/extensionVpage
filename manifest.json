@@ -10,7 +10,8 @@
     "webNavigation",
     "debugger",
     "alarms",
-    "tabs"
+    "tabs",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://nhanh.vn/*",
