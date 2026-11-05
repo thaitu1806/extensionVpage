@@ -2023,7 +2023,7 @@ async function processScanNotification(item, cfg, notified) {
   // V2 dùng CID composite để mở đúng hội thoại; không dùng SĐT làm khóa tìm box.
   if (item.kind === "order" && cfg.autoOrderOnNotify && cfg.autoFillEnabled) {
     try {
-      if (item.cid && /^\\d+_\\d+$/.test(String(item.cid))) {
+      if (item.cid && /^\d+_\d+$/.test(String(item.cid))) {
         blog(`Tuần tự AutoOrder: kích hoạt theo CID ${item.cid} trước khi chuyển box.`);
         const autoResult = await fillOrderByCID(String(item.cid));
         blog(`Tuần tự AutoOrder: kết quả CID ${item.cid}: ${JSON.stringify(autoResult).slice(0, 300)}`);
@@ -2300,7 +2300,7 @@ async function runScanCycle() {
     // V2 lấy CID composite từ URL hội thoại đang mở; SĐT chỉ là dữ liệu giao hàng.
     // V1 tiếp tục dùng đường dẫn tìm theo SĐT để giữ tương thích.
     const phone = parsed && parsed.phone ? parsed.phone : "";
-    const cidMatch = String(v2ConversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/);
+    const cidMatch = String(v2ConversationUrl || "").match(/[?&]cid=(\d+_\d+)/);
     const conversationCid = cidMatch ? cidMatch[1] : "";
     const isV2Conversation = v2ConversationUrl === "__V2_NO_CID__" || !!cidMatch;
     const orderUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || (phone
@@ -2379,7 +2379,7 @@ async function openFirstConversation(tabId, phone = "", timeout = 15000) {
           const candidates = Array.from(document.querySelectorAll("b[class]"))
             .filter((el) => el.offsetParent !== null)
             .map((el) => {
-              const match = String(el.className || "").match(/(?:^|\s)customer-(\\d+)(?:\s|$)/);
+              const match = String(el.className || "").match(/(?:^|\s)customer-(\d+)(?:\s|$)/);
               return match ? { el, conversationId: match[1] } : null;
             })
             .filter(Boolean);
@@ -2456,7 +2456,7 @@ async function markConversationUnread(tabId, conversation) {
 
         const fanpageId = "1688816194510454";
         const conversationId = String(ctx.conversationId);
-        if (!/^\\d+$/.test(conversationId)) {
+        if (!/^\d+$/.test(conversationId)) {
           return { ok: false, reason: "invalid-conversation-id" };
         }
 
@@ -2622,7 +2622,7 @@ async function sendAutoOrderTrackingLink(conversationTabId) {
 // Mở thẳng hội thoại V2 bằng CID composite rồi chạy đúng luồng AutoFill hiện tại.
 async function fillOrderByCID(cid) {
   const compositeCid = String(cid || "").trim();
-  if (!/^\\d+_\\d+$/.test(compositeCid)) {
+  if (!/^\d+_\d+$/.test(compositeCid)) {
     throw new Error("CID composite không hợp lệ; yêu cầu dạng fanpageId_conversationId.");
   }
   const [fanpageId, conversationId] = compositeCid.split("_");
@@ -2647,7 +2647,7 @@ async function fillOrderByCID(cid) {
     // Xác nhận URL vẫn đang ở đúng CID trước khi chạy AutoFill.
     const currentTab = await chrome.tabs.get(tab.id);
     const currentUrl = String(currentTab?.url || "");
-    const currentCid = currentUrl.match(/[?&]cid=(\\d+_\\d+)/)?.[1] || "";
+    const currentCid = currentUrl.match(/[?&]cid=(\d+_\d+)/)?.[1] || "";
     if (currentCid !== compositeCid) {
       throw new Error(`VPage không mở đúng CID. Yêu cầu=${compositeCid}; thực tế=${currentCid || "(trống)"}.`);
     }
