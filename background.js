@@ -2672,7 +2672,7 @@ async function processPushedCommand(cmd) {
     if (cmd.type === "status") {
       const cfg = await chrome.storage.local.get({
         tgEnabled: false, autoFillEnabled: false, autoOrderOnNotify: false,
-        autoSubmitOrder: false, bizAiAutoContinue: true, workerUrl: "", pullSecret: ""
+        autoSubmitOrder: false, bizAiAutoContinue: false, workerUrl: "", pullSecret: ""
       });
       await reportRemoteStatus(cmd.chatId, cfg);
     } else if (cmd.type === "config") {
