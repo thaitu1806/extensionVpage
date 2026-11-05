@@ -1517,16 +1517,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Chỉ tiếp tục khi có nội dung thật và kết quả ổn định qua 3 lần đọc liên tiếp.
         while (Date.now() - startedAt < 45000) {
           const current = await getRecentConversationMessages(tabId, lastN);
-          const signature = current.map((m) => `${m.role || ""}:${m.messageId || ""}:${String(m.text || "").replace(/\s+/g, " ").trim()}`).join("|");
-          const hasRealMessage = current.some((m) => {
-            const t = String(m.text || "").replace(/\s+/g, " ").trim();
-            return t.length > 3 && !/^(?:\.{1,3}|…+)$/i.test(t);
-          });
-          if (hasRealMessage && signature && signature === previousSignature) stableCount++;
-          else stableCount = hasRealMessage ? 1 : 0;
+          // Dùng role + nội dung để so sánh; messageId của bubble có thể thay đổi khi VPage render lại.
+          // Tin "." / "..." vẫn là message thực tế, nên không được dùng độ dài text để kết luận chat chưa tải.
+          const signature = current.map((m) => `${m.role || ""}:${String(m.text || "").replace(/\s+/g, " ").trim()}`).join("|");
+          const hasMessages = current.length > 0;
+          if (hasMessages && signature && signature === previousSignature) stableCount++;
+          else stableCount = hasMessages ? 1 : 0;
           previousSignature = signature;
           recentMessages = current;
-          blog(`[FULL TEST] Đang chờ chat tải ổn định: tin hợp lệ=${current.length}; ổn định=${stableCount}/3; đã chờ=${Math.round((Date.now() - startedAt) / 1000)}s.`);
+          blog(`[FULL TEST] Đang chờ chat tải ổn định: số tin=${current.length}; ổn định=${stableCount}/3; đã chờ=${Math.round((Date.now() - startedAt) / 1000)}s.`);
           if (stableCount >= 3) break;
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
