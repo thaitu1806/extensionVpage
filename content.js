@@ -31,9 +31,9 @@ log("content script đã nạp.");
 // tự click một lần để Agent tiếp tục trả lời. Theo dõi DOM vì nút có thể xuất hiện
 // trễ sau khi hội thoại được tải.
 let _bizAiContinueButton = null;
-let _bizAiAutoContinueEnabled = true;
-chrome.storage.local.get({ bizAiAutoContinue: true }, (cfg) => {
-  _bizAiAutoContinueEnabled = cfg.bizAiAutoContinue !== false;
+let _bizAiAutoContinueEnabled = false;
+chrome.storage.local.get({ bizAiAutoContinue: false }, (cfg) => {
+  _bizAiAutoContinueEnabled = cfg.bizAiAutoContinue === true;
   if (_bizAiAutoContinueEnabled) clickBizAiContinueIfPresent();
 });
 chrome.storage.onChanged.addListener((changes, areaName) => {
