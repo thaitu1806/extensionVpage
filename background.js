@@ -1880,8 +1880,8 @@ async function getRecentConversationMessages(tabId, lastN = 3) {
         return res.messages
           .filter((m) => {
             const raw = String(m?.rawText || "").replace(/\s+/g, " ").trim();
-            // Loại placeholder lúc VPage đang render bubble; không coi dấu "." là tin nhắn.
-            if (!raw || /^(?:\.{1,3}|…+|loading\.*)$/i.test(raw)) return false;
+            // "." và "..." là message thực tế trên VPage, không được loại bỏ.
+            if (!raw) return false;
             return !(/Chọn tin nhắn/i.test(raw) && /Sao chép/i.test(raw) && /Ghim/i.test(raw));
           })
           .map((m) => ({
