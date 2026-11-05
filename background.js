@@ -1473,7 +1473,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       blog("[BOX TEST] PARSE RESULT: " + JSON.stringify(parsed));
       const phone = parsed?.phone || "";
       const conversationUrl = await getTelegramConversationLink(tabId, { name: "BOX TEST" });
-      const cidMatch = String(conversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/);
+      const cidMatch = String(conversationUrl || "").match(/[?&]cid=(\d+_\d+)/);
       const cid = cidMatch?.[1] || "";
       const orderUrl = conversationUrl === "__V2_NO_CID__" ? "" : (conversationUrl || (phone
         ? `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(phone)}`
