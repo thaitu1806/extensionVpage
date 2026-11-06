@@ -507,10 +507,10 @@ async function fillForm(data) {
     }
   }
   // Chỉ tra cứu/chọn lại địa giới khi khác dữ liệu đang có.
-  if (data.addressRegion) {
+  if (data.addressRegion || data.addressRegion2 || data.address) {
     const regionInput = findAddressRegionInput();
     const currentRegion = getRegionDisplayText(regionInput);
-    if (sameRegionSelection(currentRegion, data.addressRegion)) {
+    if (data.addressRegion && sameRegionSelection(currentRegion, data.addressRegion)) {
       log(`-> GIỮ địa chỉ hành chính hiện tại: "${currentRegion}" trùng dữ liệu mới, bỏ qua tra cứu.`);
     } else {
       log(`-> CẬP NHẬT địa chỉ hành chính: cũ="${currentRegion}", mới="${data.addressRegion}" -> bắt đầu chọn lại.`);
