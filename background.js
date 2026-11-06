@@ -448,7 +448,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
 
   const grab = (label, stopLabels) => {
     const stop = stopLabels.map((l) => l.replace(/[.*+?^$\{\}()|[\]\\\\]/g, "\\$&")).join("|");
-    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
+    const re = new RegExp(label + "\s*([\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
     const matches = [...t.matchAll(re)];
     return matches.length
       ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
@@ -1483,8 +1483,8 @@ Quy tắc:
   }
 
   const cleaned = textContent
-    .replace(/^\\s*```(?:json)?\\s*/i, "")
-    .replace(/\\s*```\\s*$/i, "")
+    .replace(/^\s*```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
     .trim();
   const first = cleaned.indexOf("{");
   const last = cleaned.lastIndexOf("}");
