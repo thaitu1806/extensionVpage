@@ -1423,6 +1423,83 @@ async function getIframeOffset(tabId) {
   return { x: 0, y: 0 };
 }
 
+// Test chuẩn hóa địa chỉ có tra cứu Internet bằng DeepSeek Responses API.
+async function testAddressWithDeepSeekWebSearch(apiToken, rawAddress) {
+  const address = String(rawAddress || "").trim();
+  if (!apiToken) throw new Error("Thiếu API Key DeepSeek.");
+  if (!address) throw new Error("Địa chỉ không được để trống.");
+  if (address.length > 500) throw new Error("Địa chỉ quá dài (tối đa 500 ký tự).");
+
+  const prompt = `Bạn là hệ thống chuẩn hóa địa chỉ Việt Nam. Hãy sử dụng công cụ web_search để tra cứu và đối chiếu địa giới hành chính chính thức, ưu tiên nguồn của cơ quan nhà nước.
+
+Nhiệm vụ: xác định địa chỉ theo đơn vị hành chính TRƯỚC và SAU đợt sáp nhập đơn vị hành chính năm 2025.
+
+Địa chỉ cần chuẩn hóa:
+"${address}"
+
+Quy tắc:
+- "before": địa chỉ hành chính 3 cấp trước sáp nhập, theo thứ tự Phường/Xã, Quận/Huyện/Thành phố thuộc tỉnh, Tỉnh/Thành phố trực thuộc TW. Chỉ gồm các cấp xác định được; không tự bịa.
+- "after": địa chỉ hành chính 2 cấp hiện hành sau sáp nhập, theo thứ tự Phường/Xã mới, Tỉnh/Thành phố trực thuộc TW.
+- Giữ nguyên phần số nhà, tên đường/tòa nhà ở ngoài hai trường này; không đưa phần chi tiết vào JSON.
+- Phải tra cứu Internet để xác minh tên đơn vị hành chính và quan hệ sáp nhập; không suy đoán chỉ dựa trên tên gần giống.
+- Nếu không xác định chắc chắn một trường, để giá trị trường đó là chuỗi rỗng "".
+- Chỉ trả về đúng một JSON object thuần, không markdown, không giải thích, không thêm trường khác:
+{"before":"","after":""}`;
+
+  const response = await fetch("https://api.deepseek.com/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + apiToken
+    },
+    body: JSON.stringify({
+      model: "deepseek-v4-pro",
+      instructions: "Tuân thủ yêu cầu đầu ra JSON. Bắt buộc sử dụng web_search để kiểm chứng thông tin địa giới hành chính.",
+      input: prompt,
+      tools: [{ type: "web_search" }],
+      tool_choice: "required",
+      max_output_tokens: 500,
+      reasoning: { effort: "none" }
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error("DeepSeek Responses API HTTP " + response.status + ": " + detail.slice(0, 500));
+  }
+
+  const payload = await response.json();
+  const textContent = (Array.isArray(payload.output) ? payload.output : [])
+    .filter(item => item?.type === "message")
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(part => part?.type === "output_text")
+    .map(part => part.text || "")
+    .join("\\n")
+    .trim();
+
+  if (!textContent) {
+    const toolUse = payload.usage?.server_tool_use;
+    throw new Error("DeepSeek không trả nội dung JSON." + (toolUse ? " Web search: " + JSON.stringify(toolUse) : ""));
+  }
+
+  const cleaned = textContent
+    .replace(/^\\s*```(?:json)?\\s*/i, "")
+    .replace(/\\s*```\\s*$/i, "")
+    .trim();
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first < 0 || last <= first) throw new Error("Không tìm thấy JSON hợp lệ trong phản hồi: " + cleaned.slice(0, 400));
+
+  let data;
+  try { data = JSON.parse(cleaned.slice(first, last + 1)); }
+  catch (_) { throw new Error("DeepSeek trả JSON không hợp lệ: " + cleaned.slice(0, 400)); }
+
+  if (typeof data.before !== "string" || typeof data.after !== "string") {
+    throw new Error('JSON không đúng cấu trúc yêu cầu {"before":"", "after":""}.');
+  }
+  return { data: { before: data.before, after: data.after }, usage: payload.usage || null, model: payload.model || "deepseek-v4-pro" };
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "RUN_FILL") {
     runFill(msg.tabId)
@@ -3056,6 +3133,12 @@ chrome.alarms.onAlarm.addListener((a) => {
 
 // Handler test Telegram từ Options.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "ADDRESS_WEB_SEARCH_TEST") {
+    testAddressWithDeepSeekWebSearch(msg.apiToken, msg.address)
+      .then((result) => sendResponse({ ok: true, data: result.data, usage: result.usage, model: result.model }))
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
+  }
   if (msg?.type === "TG_TEST") {
     tgSend(msg.token, msg.chatId, "✅ Test từ extension Bếp Cô Như. Kết nối Telegram OK!")
       .then((r) => sendResponse(r))

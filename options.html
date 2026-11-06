@@ -50,6 +50,17 @@
     <button id="check" style="background:#0ea5e9; margin-top:10px;">Kiểm tra tài khoản &amp; số dư</button>
     <div id="account" class="account-box" style="display:none;"></div>
 
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Test chuẩn hóa địa chỉ trước / sau sáp nhập (DeepSeek Web Search)</h1>
+    <p class="desc">Dùng API Key DeepSeek đã nhập ở trên để tra cứu Internet và chuẩn hóa địa chỉ. Chức năng chỉ chạy thử, không thay đổi dữ liệu đơn hàng.</p>
+    <label for="addressWebSearchInput">Địa chỉ cần chuẩn hóa</label>
+    <textarea id="addressWebSearchInput" style="min-height:76px;" placeholder="VD: Halo Building, 257 Điện Biên Phủ, Quận 3, HCM"></textarea>
+    <button id="addressWebSearchTest" type="button" style="background:#0f766e; margin-top:10px;">Test DeepSeek Web Search</button>
+    <div class="status" id="addressWebSearchStatus"></div>
+    <label for="addressWebSearchOutput">Kết quả JSON</label>
+    <textarea id="addressWebSearchOutput" readonly style="min-height:100px;" placeholder='{"before":"","after":""}'></textarea>
+    <div class="hint">Model: deepseek-v4-pro (Responses API + web_search). API Key lấy từ ô “API Token DeepSeek” phía trên; không cần lưu cấu hình trước khi test.</div>
+
     <div class="row">
       <div>
         <label for="model">Model</label>

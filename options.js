@@ -195,6 +195,48 @@ function renderAccount(res) {
   );
 }
 
+// Test độc lập tính năng chuẩn hóa địa chỉ bằng Responses API + web_search.
+$("addressWebSearchTest").addEventListener("click", () => {
+  const status = $("addressWebSearchStatus");
+  const output = $("addressWebSearchOutput");
+  const apiToken = $("apiToken").value.trim();
+  const address = $("addressWebSearchInput").value.trim();
+  output.value = "";
+
+  if (!apiToken) {
+    status.textContent = "Vui lòng nhập API Token DeepSeek ở phần cấu hình phía trên.";
+    status.className = "status err";
+    return;
+  }
+  if (!address) {
+    status.textContent = "Vui lòng nhập địa chỉ cần chuẩn hóa.";
+    status.className = "status err";
+    return;
+  }
+
+  status.textContent = "Đang tra cứu Internet và chuẩn hóa địa chỉ...";
+  status.className = "status";
+  chrome.runtime.sendMessage(
+    { type: "ADDRESS_WEB_SEARCH_TEST", apiToken, address },
+    (res) => {
+      if (chrome.runtime.lastError) {
+        status.textContent = "Lỗi extension: " + chrome.runtime.lastError.message;
+        status.className = "status err";
+        return;
+      }
+      if (!res?.ok) {
+        status.textContent = "Test thất bại: " + (res?.error || "Không nhận được kết quả.");
+        status.className = "status err";
+        if (res?.raw) output.value = res.raw;
+        return;
+      }
+      output.value = JSON.stringify(res.data, null, 2);
+      status.textContent = "Thành công. Đã nhận JSON từ DeepSeek Web Search.";
+      status.className = "status ok";
+    }
+  );
+});
+
 $("check").addEventListener("click", () => {
   const box = $("account");
   box.style.display = "block";
