@@ -1427,7 +1427,7 @@ async function getIframeOffset(tabId) {
 async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemini.google.com/app/b2af4712d4092d07") {
   const address = String(rawAddress || "").trim();
   if (!address) throw new Error("Địa chỉ không được để trống.");
-  if (address.length > 500) throw new Error("Địa chỉ quá dài (tối đa 500 ký tự).");
+  if (address.length > 4000) throw new Error("Nội dung gửi Gemini quá dài (tối đa 4.000 ký tự).");
 
   let targetUrl;
   try {
