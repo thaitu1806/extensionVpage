@@ -61,6 +61,19 @@
     <textarea id="addressWebSearchOutput" readonly style="min-height:100px;" placeholder='{"before":"","after":""}'></textarea>
     <div class="hint">Model: deepseek-v4-pro (Responses API + web_search). API Key lấy từ ô “API Token DeepSeek” phía trên; không cần lưu cấu hình trước khi test.</div>
 
+
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Test tra cứu địa chỉ bằng Gemini</h1>
+    <p class="desc">Dùng cuộc trò chuyện Gemini đã có sẵn context. Extension mở đúng link Gemini, tự nhập địa chỉ, gửi câu hỏi và hiển thị phản hồi tại đây. Chức năng chỉ chạy thử, không thay đổi đơn hàng.</p>
+    <div class="hint">Gemini: <a href="https://gemini.google.com/app/b2af4712d4092d07" target="_blank" rel="noopener">Mở cuộc trò chuyện đã cấu hình</a></div>
+    <label for="geminiAddressInput">Địa chỉ cần chuẩn hóa</label>
+    <textarea id="geminiAddressInput" style="min-height:76px;" placeholder="Nhập địa chỉ cần tra cứu..."></textarea>
+    <button id="geminiAddressTest" type="button" style="background:#2563eb; margin-top:10px;">Mở Gemini &amp; lấy kết quả</button>
+    <div class="status" id="geminiAddressStatus"></div>
+    <label for="geminiAddressOutput">Kết quả Gemini trả về</label>
+    <textarea id="geminiAddressOutput" readonly style="min-height:150px;" placeholder="Phản hồi Gemini sẽ hiển thị tại đây..."></textarea>
+    <div class="hint">Tab Gemini được giữ mở để bạn kiểm tra phản hồi. Cần đăng nhập Gemini trên Chrome.</div>
+
     <div class="row">
       <div>
         <label for="model">Model</label>
