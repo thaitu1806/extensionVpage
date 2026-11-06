@@ -1474,7 +1474,7 @@ Quy tắc:
     .flatMap(item => Array.isArray(item.content) ? item.content : [])
     .filter(part => part?.type === "output_text")
     .map(part => part.text || "")
-    .join("\\n")
+    .join("\n")
     .trim();
 
   if (!textContent) {
