@@ -88,18 +88,44 @@ function normalizeMoneyFields(obj) {
 // có dấu hiệu thuộc TP.HCM/TP Thủ Đức để tránh xóa nhầm địa danh ở nơi khác.
 function removeObsoleteHcmDistricts(region) {
   if (!region) return "";
-  const isHcm = /hồ\s*chí\s*minh|ho\s*chi\s*minh|\\bhcm\\b|sài\s*gòn|sai\s*gon|thủ\s*đức|thu\s*duc/i.test(region);
+  const parts = String(region).split(",").map((part) => part.trim()).filter(Boolean);
+  const normalize = (value) => String(value || "").toLowerCase()
+    .replace(/đ/g, "d")
+    .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+  // Chỉ áp dụng cho địa chỉ TP.HCM; tránh đổi nhầm Quận 2/9 ở tỉnh khác.
+  const allText = normalize(parts.join(" "));
+  const isHcm = /hochiminh|tphcm|hcm|saigon|thuduc/.test(allText);
   if (!isHcm) return region;
 
-  const parts = region.split(",").map((part) => part.trim()).filter(Boolean);
-  const obsoleteDistrict = /^(?:quận\s*[29]|q\\.?\s*[29])$/i;
-  const cleaned = parts
-    .filter((part) => !obsoleteDistrict.test(part))
-    // "TP Thủ Đức" là cấp trung gian không cần gửi nguyên cụm khi tìm địa giới.
-    // Giữ tên "Thủ Đức" để có thể dùng làm cấp giữa nếu hệ thống cần.
-    .map((part) => /^(?:tp\\.?\s*)?thủ\s*đức$/i.test(part) ? "Thủ Đức" : part);
+  // Quận 2 và Quận 9 cũ hiện thuộc TP Thủ Đức.
+  // Nhận đủ cách viết: Quận 2, Quan 2, Q2, Q.2, Q 2 (tương tự Quận 9).
+  const isOldThuDucDistrict = (part) => {
+    const value = normalize(part);
+    return /^(quan|q)?[29]$/.test(value);
+  };
 
-  return cleaned.join(", ").replace(/\s{2,}/g, " ").trim();
+  let replaced = false;
+  const cleaned = parts.map((part) => {
+    if (isOldThuDucDistrict(part)) {
+      replaced = true;
+      return "Thành Phố Thủ Đức";
+    }
+    return part;
+  });
+
+  // Tránh lặp TP Thủ Đức nếu dữ liệu đã có sẵn.
+  const hasThuDuc = cleaned.some((part) => /^(thanhpho)?thuduc$/.test(normalize(part)));
+  const result = hasThuDuc
+    ? cleaned.filter((part, index) => !(/^(thanhpho)?thuduc$/.test(normalize(part)) && index !== cleaned.findIndex((x) => /^(thanhpho)?thuduc$/.test(normalize(x)))))
+    : cleaned;
+
+  const output = result.join(", ").replace(/\\s{2,}/g, " ").trim();
+  if (replaced) {
+    blog(`Đã chuyển địa giới Quận 2/9 cũ sang Thành Phố Thủ Đức: "${region}" -> "${output}"`);
+  }
+  return output;
 }
 function cleanAddress(addr) {
   return String(addr || "")
