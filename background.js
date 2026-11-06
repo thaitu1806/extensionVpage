@@ -86,7 +86,7 @@ function normalizeMoneyFields(obj) {
 // Bỏ cấp Quận 2 / Quận 9 cũ khỏi phần hành chính TP.HCM.
 // Chỉ xử lý addressRegion (không đụng phần số nhà/đường) và chỉ khi địa chỉ
 // có dấu hiệu thuộc TP.HCM/TP Thủ Đức để tránh xóa nhầm địa danh ở nơi khác.
-function removeObsoleteHcmDistricts(region) {
+function removeObsoleteHcmDistricts(region, sourceText = "") {
   if (!region) return "";
   const parts = String(region).split(",").map((part) => part.trim()).filter(Boolean);
   const normalize = (value) => String(value || "").toLowerCase()
@@ -107,13 +107,25 @@ function removeObsoleteHcmDistricts(region) {
   };
 
   let replaced = false;
-  const cleaned = parts.map((part) => {
+  const sourceHasOldDistrict = String(sourceText || "").split(",")
+    .some((part) => isOldThuDucDistrict(part));
+  let cleaned = parts.map((part) => {
     if (isOldThuDucDistrict(part)) {
       replaced = true;
       return "Thành Phố Thủ Đức";
     }
     return part;
   });
+
+  // DeepSeek đôi khi nhận ra phường/tỉnh nhưng bỏ mất Quận 2/9 trong kết quả.
+  // Nếu địa chỉ gốc có Quận 2/9 và kết quả chuẩn hóa xác định TP.HCM,
+  // khôi phục cấp Thành Phố Thủ Đức vào giữa phường và tỉnh.
+  if (sourceHasOldDistrict && !cleaned.some((part) => /^(thanhpho)?thuduc$/.test(normalize(part)))) {
+    if (cleaned.length >= 2) {
+      cleaned.splice(cleaned.length - 1, 0, "Thành Phố Thủ Đức");
+      replaced = true;
+    }
+  }
 
   // Tránh lặp TP Thủ Đức nếu dữ liệu đã có sẵn.
   const hasThuDuc = cleaned.some((part) => /^(thanhpho)?thuduc$/.test(normalize(part)));
@@ -1187,7 +1199,7 @@ async function runFill(tabId, options = {}) {
       if (norm && (norm.ward || norm.province)) {
         extracted.address = norm.detail || extracted.address;
         const normalizedRegion = [norm.ward, norm.district, norm.province].filter(Boolean).join(", ");
-        extracted.addressRegion = removeObsoleteHcmDistricts(normalizedRegion);
+        extracted.addressRegion = removeObsoleteHcmDistricts(normalizedRegion, rawAddr);
 
         // Bản 2 cấp phải luôn giữ 2 cụm có ý nghĩa:
         // - Có phường/xã: Phường/Xã + Tỉnh/Thành phố.
