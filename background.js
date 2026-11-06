@@ -3271,9 +3271,13 @@ chrome.alarms.onAlarm.addListener((a) => {
 // Handler test Telegram từ Options.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "GEMINI_ADDRESS_RESOLVE") {\n    resolveAddressWithGemini(msg.address, msg.addressRegion, msg.addressRegion2)\n      .then(result => sendResponse(result))\n      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));\n    return true;\n  }\n  if (msg?.type === "GEMINI_ADDRESS_TEST") {
-    testAddressWithGemini(msg.address)
-      .then(result => sendResponse(result))
-      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    chrome.storage.local.get({
+      geminiConversationUrl: "https://gemini.google.com/app/b2af4712d4092d07"
+    }, cfg => {
+      testAddressWithGemini(msg.address, cfg.geminiConversationUrl)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    });
     return true;
   }
   if (msg?.type === "ADDRESS_WEB_SEARCH_TEST") {
