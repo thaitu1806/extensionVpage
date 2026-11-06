@@ -447,10 +447,10 @@ function parseOrderConfirmation(text, preferLastFields = false) {
     .replace(/(?<!Phí )Vận chuyển\s*:/i, "\nVận chuyển:");
 
   const grab = (label, stopLabels) => {
-    // Escape nhãn trước khi đưa vào RegExp; dùng "\\s" đúng cách trong chuỗi.
-    const escapeRegex = (value) => value.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, "\\\\$&");
-    const stop = stopLabels.map(escapeRegex).join("|");
-    const re = new RegExp(escapeRegex(label) + "\\\\s*([\\\\s\\\\S]*?)(?=\\\\n(?:" + stop + ")|$)", "ig");
+    // Các nhãn hiện tại là chuỗi cố định, không chứa ký tự đặc biệt của RegExp.
+    // Escape backslash đúng trong JS string để RegExp nhận \s và [\s\S].
+    const stop = stopLabels.join("|");
+    const re = new RegExp(label + "\\s*([\\s\\S]*?)(?=\\n(?:" + stop + ")|$)", "ig");
     const matches = [...t.matchAll(re)];
     return matches.length
       ? matches[preferLastFields ? matches.length - 1 : 0][1].trim()
