@@ -1423,6 +1423,85 @@ async function getIframeOffset(tabId) {
   return { x: 0, y: 0 };
 }
 
+
+async function testAddressWithGemini(rawAddress) {
+  const address = String(rawAddress || "").trim();
+  if (!address) throw new Error("Địa chỉ không được để trống.");
+  if (address.length > 500) throw new Error("Địa chỉ quá dài (tối đa 500 ký tự).");
+
+  const tab = await chrome.tabs.create({
+    url: "https://gemini.google.com/app/b2af4712d4092d07",
+    active: true
+  });
+  for (let i = 0; i < 45; i++) {
+    const current = await chrome.tabs.get(tab.id);
+    if (current.status === "complete") break;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  const injected = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    args: [address],
+    func: async (addressText) => {
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const editorSelector = 'div[contenteditable="true"][role="textbox"], rich-textarea [contenteditable="true"], [contenteditable="true"], textarea';
+      let editor = null;
+      for (let i = 0; i < 30 && !editor; i++) {
+        editor = document.querySelector(editorSelector);
+        if (!editor) await sleep(1000);
+      }
+      if (!editor) return { ok: false, error: "Không tìm thấy ô chat Gemini. Kiểm tra đăng nhập và thử lại." };
+
+      const responseSelector = "model-response, [data-test-id='model-response'], .model-response";
+      const oldNodes = Array.from(document.querySelectorAll(responseSelector));
+      const oldCount = oldNodes.length;
+      const oldText = oldNodes.length ? (oldNodes[oldNodes.length - 1].innerText || "").trim() : "";
+
+      editor.focus();
+      if (editor.tagName === "TEXTAREA") {
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+        if (setter) setter.call(editor, addressText);
+        else editor.value = addressText;
+      } else {
+        editor.textContent = addressText;
+      }
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: addressText }));
+      await sleep(700);
+
+      const send = Array.from(document.querySelectorAll("button")).find(button => {
+        const label = [button.getAttribute("aria-label"), button.getAttribute("title"), button.innerText].join(" ").toLowerCase();
+        return /send message|send|gửi tin nhắn|gửi/.test(label) && !button.disabled;
+      });
+      if (send) send.click();
+      else editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+
+      let latest = "";
+      let stableCount = 0;
+      const started = Date.now();
+      while (Date.now() - started < 120000) {
+        await sleep(1500);
+        const nodes = Array.from(document.querySelectorAll(responseSelector));
+        const candidate = nodes.length ? (nodes[nodes.length - 1].innerText || "").trim() : "";
+        if (candidate && (nodes.length > oldCount || candidate !== oldText)) {
+          if (candidate === latest) stableCount++;
+          else { latest = candidate; stableCount = 0; }
+          const generating = Array.from(document.querySelectorAll("button")).some(button => {
+            const label = [button.getAttribute("aria-label"), button.getAttribute("title")].join(" ").toLowerCase();
+            return /stop generating|stop response|dừng/.test(label);
+          });
+          if (stableCount >= 2 && !generating && latest.length > 10) return { ok: true, text: latest };
+        }
+      }
+      if (latest) return { ok: true, text: latest, warning: "Đã lấy nội dung nhưng chưa xác nhận Gemini hoàn tất." };
+      return { ok: false, error: "Đã gửi địa chỉ nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini." };
+    }
+  });
+  const result = injected?.[0]?.result;
+  if (!result?.ok) throw new Error(result?.error || "Không đọc được phản hồi Gemini.");
+  return { ok: true, text: result.text, warning: result.warning || "" };
+}
+
 // Test chuẩn hóa địa chỉ có tra cứu Internet bằng DeepSeek Responses API.
 async function testAddressWithDeepSeekWebSearch(apiToken, rawAddress) {
   const address = String(rawAddress || "").trim();
@@ -3133,6 +3212,12 @@ chrome.alarms.onAlarm.addListener((a) => {
 
 // Handler test Telegram từ Options.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "GEMINI_ADDRESS_TEST") {
+    testAddressWithGemini(msg.address)
+      .then(result => sendResponse(result))
+      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
+    return true;
+  }
   if (msg?.type === "ADDRESS_WEB_SEARCH_TEST") {
     testAddressWithDeepSeekWebSearch(msg.apiToken, msg.address)
       .then((result) => sendResponse({ ok: true, data: result.data, usage: result.usage, model: result.model }))
