@@ -534,8 +534,44 @@ async function fillForm(data) {
         verified = okRegion && (_regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion));
         log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, duy nhất=${_regionSelectedFromUniqueSuggestion}, hiển thị="${verifiedRegion}"`);
       }
+      if (!verified) {
+        // Fallback Gemini chỉ chạy khi cả hai lần chọn địa giới hiện tại đều thất bại.
+        const rawAddress = [data.address, data.addressRegion, data.addressRegion2]
+          .map(value => String(value || "").trim())
+          .filter(Boolean)
+          .join(", ");
+        log("Địa giới không khớp sau các lần thử hiện tại -> gọi Gemini tra cứu địa chỉ dự phòng.");
+        let gemini;
+        try {
+          gemini = await chrome.runtime.sendMessage({
+            type: "GEMINI_ADDRESS_RESOLVE",
+            address: rawAddress,
+            addressRegion: data.addressRegion,
+            addressRegion2: data.addressRegion2
+          });
+        } catch (error) {
+          throw new Error(`Không thể gọi Gemini để xác minh địa chỉ: ${error?.message || error}`);
+        }
+        if (!gemini?.ok || !gemini.addressRegion || !gemini.addressRegion2) {
+          throw new Error(`Gemini không xác minh được địa chỉ. ${gemini?.error || "Không có kết quả địa giới hợp lệ."} Dừng để tránh lưu sai địa chỉ.`);
+        }
+
+        log(`Gemini đề xuất địa giới: 3 cấp="${gemini.addressRegion}", 2 cấp="${gemini.addressRegion2}". Thử chọn lại trên form.`);
+        data.addressRegion = gemini.addressRegion;
+        data.addressRegion2 = gemini.addressRegion2;
+        _regionSelectedFromUniqueSuggestion = false;
+        okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
+        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+        verified = okRegion && (
+          _regionSelectedFromUniqueSuggestion ||
+          sameRegionSelection(verifiedRegion, data.addressRegion) ||
+          sameRegionSelection(verifiedRegion, data.addressRegion2)
+        );
+        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+      }
+
       if (verified) done.push("tỉnh/xã");
-      else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách. Khách cung cấp="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
+      else throw new Error(`Địa chỉ hành chính chưa khớp dữ liệu khách/Gemini. Gemini hoặc dữ liệu đầu vào="${data.addressRegion}", form hiển thị="${verifiedRegion}". Dừng để tránh lưu sai địa chỉ.`);
     }
   }
 
