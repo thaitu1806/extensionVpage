@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nhanh.vn - DeepSeek Tự Điền Đơn",
-  "version": "1.1.9",
+  "version": "1.2.0",
   "description": "Đọc tin nhắn chat chốt đơn, dùng DeepSeek AI trích xuất thông tin và tự điền vào form tạo đơn hàng Nhanh.vn.",
   "permissions": [
     "storage",
@@ -18,7 +18,8 @@
     "https://*.nhanh.vn/*",
     "https://api.deepseek.com/*",
     "https://api.telegram.org/*",
-    "https://*.workers.dev/*"
+    "https://*.workers.dev/*",
+    "https://gemini.google.com/app/*"
   ],
   "action": {
     "default_popup": "popup.html",
