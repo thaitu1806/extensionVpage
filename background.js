@@ -1502,6 +1502,47 @@ async function testAddressWithGemini(rawAddress) {
   return { ok: true, text: result.text, warning: result.warning || "" };
 }
 
+
+// Dùng Gemini làm phương án dự phòng khi form Nhanh.vn không tìm/chọn được địa giới.
+async function resolveAddressWithGemini(address, knownRegion3, knownRegion2) {
+  const rawAddress = String(address || "").trim();
+  if (!rawAddress) throw new Error("Không có địa chỉ gốc để Gemini tra cứu.");
+
+  const prompt = `Hãy tra cứu và xác minh địa chỉ Việt Nam sau để chọn đúng đơn vị hành chính trong form giao hàng Nhanh.vn.
+
+Địa chỉ khách cung cấp: "${rawAddress}"
+Thông tin địa giới đã trích xuất (có thể sai hoặc thiếu):
+- addressRegion: "${String(knownRegion3 || "").trim()}"
+- addressRegion2: "${String(knownRegion2 || "").trim()}"
+
+Yêu cầu:
+- Xác minh địa chỉ thực tế, ưu tiên nguồn chính thức và đối chiếu tên phường/xã, quận/huyện (nếu còn trong dữ liệu form), tỉnh/thành.
+- addressRegion: chuỗi địa giới 3 cấp theo thứ tự Phường/Xã, Quận/Huyện/Thành phố thuộc tỉnh, Tỉnh/Thành phố; nếu địa chỉ hiện chỉ còn 2 cấp thì ghi đúng 2 cấp, không tự tạo cấp huyện.
+- addressRegion2: chuỗi địa giới 2 cấp theo thứ tự Phường/Xã mới, Tỉnh/Thành phố.
+- Không đưa số nhà, tên đường, tòa nhà vào hai trường địa giới.
+- Không đoán hoặc tự tạo đơn vị hành chính. Nếu không xác minh chắc chắn, để trường tương ứng là chuỗi rỗng.
+- Chỉ trả về một JSON object, không markdown, không giải thích, đúng hai khóa:
+{"addressRegion":"","addressRegion2":""}`;
+
+  const result = await testAddressWithGemini(prompt);
+  const match = String(result.text || "").match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Gemini không trả về JSON địa chỉ hợp lệ.");
+
+  let parsed;
+  try { parsed = JSON.parse(match[0]); }
+  catch { throw new Error("Không phân tích được JSON địa chỉ do Gemini trả về."); }
+
+  const addressRegion = String(parsed.addressRegion || "").trim();
+  const addressRegion2 = String(parsed.addressRegion2 || "").trim();
+  if (!addressRegion || !addressRegion2) {
+    throw new Error("Gemini chưa xác minh đủ địa giới 3 cấp và 2 cấp; không tự đoán địa chỉ.");
+  }
+  if (addressRegion.length > 180 || addressRegion2.length > 120) {
+    throw new Error("Kết quả địa giới từ Gemini không hợp lệ (quá dài).");
+  }
+  return { ok: true, addressRegion, addressRegion2, warning: result.warning || "" };
+}
+
 // Test chuẩn hóa địa chỉ có tra cứu Internet bằng DeepSeek Responses API.
 async function testAddressWithDeepSeekWebSearch(apiToken, rawAddress) {
   const address = String(rawAddress || "").trim();
@@ -3212,7 +3253,7 @@ chrome.alarms.onAlarm.addListener((a) => {
 
 // Handler test Telegram từ Options.
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg?.type === "GEMINI_ADDRESS_TEST") {
+  if (msg?.type === "GEMINI_ADDRESS_RESOLVE") {\n    resolveAddressWithGemini(msg.address, msg.addressRegion, msg.addressRegion2)\n      .then(result => sendResponse(result))\n      .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));\n    return true;\n  }\n  if (msg?.type === "GEMINI_ADDRESS_TEST") {
     testAddressWithGemini(msg.address)
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
