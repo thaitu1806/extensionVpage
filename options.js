@@ -237,6 +237,40 @@ $("addressWebSearchTest").addEventListener("click", () => {
   );
 });
 
+
+ // Test tra cứu địa chỉ bằng Gemini đã có context.
+ $("geminiAddressTest").addEventListener("click", () => {
+   const status = $("geminiAddressStatus");
+   const output = $("geminiAddressOutput");
+   const address = $("geminiAddressInput").value.trim();
+   output.value = "";
+   if (!address) {
+     status.textContent = "Vui lòng nhập địa chỉ cần chuẩn hóa.";
+     status.className = "status err";
+     return;
+   }
+   status.textContent = "Đang mở Gemini, gửi địa chỉ và chờ phản hồi...";
+   status.className = "status";
+   $("geminiAddressTest").disabled = true;
+   chrome.runtime.sendMessage({ type: "GEMINI_ADDRESS_TEST", address }, (res) => {
+     $("geminiAddressTest").disabled = false;
+     if (chrome.runtime.lastError) {
+       status.textContent = "Lỗi extension: " + chrome.runtime.lastError.message;
+       status.className = "status err";
+       return;
+     }
+     if (!res?.ok) {
+       status.textContent = "Không lấy được kết quả: " + (res?.error || "Gemini chưa phản hồi.");
+       status.className = "status err";
+       if (res?.text) output.value = res.text;
+       return;
+     }
+     output.value = res.text || "";
+     status.textContent = res.warning || "Đã lấy được phản hồi Gemini. Hãy kiểm tra kết quả trước khi sử dụng.";
+     status.className = "status ok";
+   });
+ });
+
 $("check").addEventListener("click", () => {
   const box = $("account");
   box.style.display = "block";
