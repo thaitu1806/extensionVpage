@@ -1424,13 +1424,23 @@ async function getIframeOffset(tabId) {
 }
 
 
-async function testAddressWithGemini(rawAddress) {
+async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemini.google.com/app/b2af4712d4092d07") {
   const address = String(rawAddress || "").trim();
   if (!address) throw new Error("Địa chỉ không được để trống.");
   if (address.length > 500) throw new Error("Địa chỉ quá dài (tối đa 500 ký tự).");
 
+  let targetUrl;
+  try {
+    targetUrl = new URL(String(conversationUrl || "https://gemini.google.com/app/b2af4712d4092d07"));
+    if (targetUrl.protocol !== "https:" || targetUrl.hostname !== "gemini.google.com" || !targetUrl.pathname.startsWith("/app/")) {
+      throw new Error("Link Gemini không hợp lệ. Hãy kiểm tra cấu hình trong Options.");
+    }
+  } catch (error) {
+    throw new Error(error.message || "Link Gemini không hợp lệ.");
+  }
+
   const tab = await chrome.tabs.create({
-    url: "https://gemini.google.com/app/b2af4712d4092d07",
+    url: targetUrl.href,
     active: true
   });
   for (let i = 0; i < 45; i++) {
@@ -1524,7 +1534,14 @@ Yêu cầu:
 - Chỉ trả về một JSON object, không markdown, không giải thích, đúng hai khóa:
 {"addressRegion":"","addressRegion2":""}`;
 
-  const result = await testAddressWithGemini(prompt);
+  const cfg = await new Promise(resolve => chrome.storage.local.get({
+    geminiAddressFallbackEnabled: true,
+    geminiConversationUrl: "https://gemini.google.com/app/b2af4712d4092d07"
+  }, resolve));
+  if (cfg.geminiAddressFallbackEnabled === false) {
+    throw new Error("Gemini fallback đang tắt trong cấu hình extension.");
+  }
+  const result = await testAddressWithGemini(prompt, cfg.geminiConversationUrl);
   const match = String(result.text || "").match(/\{[\s\S]*\}/);
   if (!match) throw new Error("Gemini không trả về JSON địa chỉ hợp lệ.");
 
