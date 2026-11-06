@@ -65,7 +65,16 @@
     <div class="divider"></div>
     <h1 style="font-size:16px;">Test tra cứu địa chỉ bằng Gemini</h1>
     <p class="desc">Dùng cuộc trò chuyện Gemini đã có sẵn context. Extension mở đúng link Gemini, tự nhập địa chỉ, gửi câu hỏi và hiển thị phản hồi tại đây. Chức năng chỉ chạy thử, không thay đổi đơn hàng.</p>
-    <div class="hint">Gemini: <a href="https://gemini.google.com/app/b2af4712d4092d07" target="_blank" rel="noopener">Mở cuộc trò chuyện đã cấu hình</a></div>
+    <div class="divider"></div>
+    <h1 style="font-size:16px;">Cấu hình Gemini fallback cho địa chỉ</h1>
+    <p class="desc">Khi extension không chọn được địa giới hành chính bằng dữ liệu hiện tại, có thể nhờ Gemini tra cứu rồi thử chọn lại. Tắt tùy chọn này để bỏ qua Gemini fallback.</p>
+    <label style="display:flex;align-items:center;gap:8px;margin:10px 0;">
+      <input type="checkbox" id="geminiAddressFallbackEnabled" style="width:auto;" />
+      <span>Bật Gemini fallback khi không tìm/chọn được địa chỉ</span>
+    </label>
+    <label for="geminiConversationUrl">Link cuộc trò chuyện Gemini</label>
+    <input type="url" id="geminiConversationUrl" placeholder="https://gemini.google.com/app/..." autocomplete="off" />
+    <div class="hint">Gemini: <a id="geminiConversationLink" href="https://gemini.google.com/app/b2af4712d4092d07" target="_blank" rel="noopener">Mở cuộc trò chuyện đã cấu hình</a></div>
     <label for="geminiAddressInput">Địa chỉ cần chuẩn hóa</label>
     <textarea id="geminiAddressInput" style="min-height:76px;" placeholder="Nhập địa chỉ cần tra cứu..."></textarea>
     <button id="geminiAddressTest" type="button" style="background:#2563eb; margin-top:10px;">Mở Gemini &amp; lấy kết quả</button>
