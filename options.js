@@ -43,7 +43,9 @@ const DEFAULTS = {
   orderTabMode: "default",
   autoOrderStatus: "Mới",
   workerUrl: "",
-  pullSecret: ""
+  pullSecret: "",
+  geminiAddressFallbackEnabled: true,
+  geminiConversationUrl: "https://gemini.google.com/app/b2af4712d4092d07"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -94,8 +96,16 @@ function load() {
     $("autoOrderStatus").value = cfg.autoOrderStatus === "Đã xác nhận" ? "Đã xác nhận" : "Mới";
     $("workerUrl").value = cfg.workerUrl || "";
     $("pullSecret").value = cfg.pullSecret || "";
+    $("geminiAddressFallbackEnabled").checked = cfg.geminiAddressFallbackEnabled !== false;
+    $("geminiConversationUrl").value = cfg.geminiConversationUrl || DEFAULTS.geminiConversationUrl;
+    $("geminiConversationLink").href = $("geminiConversationUrl").value;
   });
 }
+
+$("geminiConversationUrl")?.addEventListener("input", () => {
+  const value = $("geminiConversationUrl").value.trim();
+  $("geminiConversationLink").href = value || DEFAULTS.geminiConversationUrl;
+});
 
 function save() {
   const status = $("status");
@@ -125,8 +135,23 @@ function save() {
     orderTabMode: ["background", "switch"].includes($("orderTabMode").value) ? $("orderTabMode").value : "default",
     autoOrderStatus: $("autoOrderStatus").value === "Đã xác nhận" ? "Đã xác nhận" : "Mới",
     workerUrl: $("workerUrl").value.trim().replace(/\/+$/, ""),
-    pullSecret: $("pullSecret").value.trim()
+    pullSecret: $("pullSecret").value.trim(),
+    geminiAddressFallbackEnabled: $("geminiAddressFallbackEnabled").checked,
+    geminiConversationUrl: $("geminiConversationUrl").value.trim() || DEFAULTS.geminiConversationUrl
   };
+
+  let geminiUrl;
+  try {
+    geminiUrl = new URL(cfg.geminiConversationUrl);
+    if (geminiUrl.protocol !== "https:" || geminiUrl.hostname !== "gemini.google.com" || !geminiUrl.pathname.startsWith("/app/")) {
+      throw new Error("URL Gemini phải có dạng https://gemini.google.com/app/...");
+    }
+    cfg.geminiConversationUrl = geminiUrl.href;
+  } catch (error) {
+    status.textContent = error.message || "Link Gemini không hợp lệ.";
+    status.className = "status err";
+    return;
+  }
 
   if (!cfg.apiToken) {
     status.textContent = "Vui lòng nhập API Token DeepSeek.";
