@@ -91,7 +91,7 @@ function removeObsoleteHcmDistricts(region) {
   const parts = String(region).split(",").map((part) => part.trim()).filter(Boolean);
   const normalize = (value) => String(value || "").toLowerCase()
     .replace(/đ/g, "d")
-    .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]/g, "");
 
   // Chỉ áp dụng cho địa chỉ TP.HCM; tránh đổi nhầm Quận 2/9 ở tỉnh khác.
@@ -121,7 +121,7 @@ function removeObsoleteHcmDistricts(region) {
     ? cleaned.filter((part, index) => !(/^(thanhpho)?thuduc$/.test(normalize(part)) && index !== cleaned.findIndex((x) => /^(thanhpho)?thuduc$/.test(normalize(x)))))
     : cleaned;
 
-  const output = result.join(", ").replace(/\\s{2,}/g, " ").trim();
+  const output = result.join(", ").replace(/\s{2,}/g, " ").trim();
   if (replaced) {
     blog(`Đã chuyển địa giới Quận 2/9 cũ sang Thành Phố Thủ Đức: "${region}" -> "${output}"`);
   }
