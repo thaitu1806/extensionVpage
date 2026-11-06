@@ -3275,7 +3275,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
-  }\n  if (msg?.type === "GEMINI_ADDRESS_TEST") {
+  }
+  if (msg?.type === "GEMINI_ADDRESS_TEST") {
     chrome.storage.local.get({
       geminiConversationUrl: "https://gemini.google.com/app/b2af4712d4092d07"
     }, cfg => {
