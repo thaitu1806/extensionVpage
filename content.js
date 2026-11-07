@@ -521,7 +521,7 @@ async function fillForm(data) {
       // thì chấp nhận ngay, tuyệt đối không verify/fallback chọn lại.
       // Dù chỉ có 1 gợi ý, vẫn phải kiểm tra placeholder có đúng số cấp.
       // Không chấp nhận kết quả thiếu cấp hoặc thừa cấp chỉ vì click thành công.
-      const levelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+      const levelVerified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
       let verified = okRegion && levelVerified && (
         _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion)
       );
@@ -531,7 +531,7 @@ async function fillForm(data) {
         _regionSelectedFromUniqueSuggestion = false;
         okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
         verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        const retryLevelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+        const retryLevelVerified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
         verified = okRegion && retryLevelVerified && (
           _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion)
         );
@@ -565,7 +565,7 @@ async function fillForm(data) {
         _regionSelectedFromUniqueSuggestion = false;
         okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
         verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        const geminiLevelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+        const geminiLevelVerified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
         verified = okRegion && geminiLevelVerified && (
           _regionSelectedFromUniqueSuggestion ||
           sameRegionSelection(verifiedRegion, data.addressRegion) ||
@@ -1145,19 +1145,19 @@ function getRegionDisplayText(input) {
   return (input.value || placeholder).trim();
 }
 
-// Xác minh số cấp thực tế mà Vpage đã chọn bằng placeholder:
-// 3 cấp phải có 2 dấu phẩy; 2 cấp phải có 1 dấu phẩy.
-// Dựa vào trạng thái toggle sau khi fillAddressRegion đã đồng bộ chế độ.
-function hasExpectedRegionLevel(input) {
+// Xác minh số cấp theo ĐỊA CHỈ ĐẦU VÀO, không đọc lại toggle UI.
+// Nhanh.vn có thể thay đổi/render lại checkbox sau khi chọn suggestion, khiến
+// trạng thái checked đọc được không còn phản ánh chế độ đã dùng để tìm kiếm.
+// Địa chỉ 2 cấp (Phường/Xã + Tỉnh/Thành phố) có 1 dấu phẩy; 3 cấp có 2.
+function hasExpectedRegionLevel(input, expectedRegion) {
   const display = getRegionDisplayText(input);
   if (!display) return false;
   const commaCount = (display.match(/[,，]/g) || []).length;
-  const toggle = findTwoLevelToggle();
-  const isTwoLevel = !!(toggle?.cb?.checked);
-  const expectedCommaCount = isTwoLevel ? 1 : 2;
-  const valid = commaCount === expectedCommaCount;
+  const expectedParts = String(expectedRegion || "").split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const expectedCommaCount = Math.max(0, expectedParts.length - 1);
+  const valid = expectedParts.length >= 2 && commaCount === expectedCommaCount;
   if (!valid) {
-    log(`Placeholder địa giới chưa đúng số cấp: hiển thị="${display}", dấu phẩy=${commaCount}, yêu cầu=${expectedCommaCount} (${isTwoLevel ? "2 cấp" : "3 cấp"}).`);
+    log(`Placeholder địa giới chưa đúng số cấp: hiển thị="${display}", dấu phẩy=${commaCount}, địa chỉ yêu cầu="${expectedRegion}", dấu phẩy yêu cầu=${expectedCommaCount}.`);
   }
   return valid;
 }
