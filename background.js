@@ -1492,23 +1492,70 @@ async function sendGeminiMessage(tabId, message) {
       if (send) send.click();
       else editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
 
+      // Gemini có thể đặt phần "Gemini said" trong model-response wrapper,
+      // còn nội dung thật nằm ở phần tử con hoặc open shadowRoot.
+      const readDeepText = root => {
+        if (!root) return "";
+        const chunks = [];
+        const visit = node => {
+          if (!node) return;
+          if (node.nodeType === Node.TEXT_NODE) {
+            const value = (node.nodeValue || "").trim();
+            if (value) chunks.push(value);
+            return;
+          }
+          if (node.nodeType !== Node.ELEMENT_NODE && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return;
+          if (node.shadowRoot) visit(node.shadowRoot);
+          for (const child of Array.from(node.childNodes || [])) visit(child);
+        };
+        visit(root);
+        return chunks.join(" ").replace(/\\s+/g, " ").trim();
+      };
+      const getResponseSnapshot = () => {
+        const nodes = Array.from(document.querySelectorAll(responseSelector));
+        const candidates = nodes.map((node, index) => {
+          const innerText = (node.innerText || "").trim();
+          const textContent = (node.textContent || "").trim();
+          const deepText = readDeepText(node);
+          const values = [innerText, textContent, deepText]
+            .map(value => value.replace(/\\s+/g, " ").trim())
+            .filter(value => value && !/^gemini said$/i.test(value));
+          const bestText = values.sort((a, b) => b.length - a.length)[0] || "";
+          return {
+            index,
+            text: bestText,
+            innerText,
+            textContent,
+            deepText,
+            html: (node.outerHTML || "").slice(0, 1800)
+          };
+        });
+        return { nodes, candidates };
+      };
+
       let latest = "";
       let stableCount = 0;
       let latestNodeCount = oldCount;
+      let latestSnapshot = null;
       const started = Date.now();
       while (Date.now() - started < 120000) {
         await sleep(1500);
-        const nodes = Array.from(document.querySelectorAll(responseSelector));
-        const candidate = nodes.length ? (nodes[nodes.length - 1].innerText || "").trim() : "";
-        if (candidate && (nodes.length > oldCount || candidate !== oldText)) {
+        const snapshot = getResponseSnapshot();
+        const candidate = snapshot.candidates.length
+          ? snapshot.candidates[snapshot.candidates.length - 1].text
+          : "";
+        const isNew = snapshot.nodes.length > oldCount || (candidate && candidate !== oldText);
+        // Không chấp nhận nhãn trợ năng "Gemini said" là câu trả lời.
+        if (isNew && candidate.length > 20 && !/^gemini said$/i.test(candidate)) {
           if (candidate === latest) stableCount++;
           else { latest = candidate; stableCount = 0; }
-          latestNodeCount = nodes.length;
+          latestNodeCount = snapshot.nodes.length;
+          latestSnapshot = snapshot.candidates[snapshot.candidates.length - 1];
           const generating = Array.from(document.querySelectorAll("button")).some(button => {
             const label = [button.getAttribute("aria-label"), button.getAttribute("title")].join(" ").toLowerCase();
             return /stop generating|stop response|dừng/.test(label);
           });
-          if (stableCount >= 2 && !generating && latest.length > 10) {
+          if (stableCount >= 2 && !generating) {
             return {
               ok: true,
               text: latest,
@@ -1522,12 +1569,17 @@ async function sendGeminiMessage(tabId, message) {
                 responseLength: latest.length,
                 stableCount,
                 generating,
-                responseText: latest
+                responseText: latest,
+                responseInnerText: latestSnapshot?.innerText || "",
+                responseTextContent: latestSnapshot?.textContent || "",
+                responseDeepText: latestSnapshot?.deepText || "",
+                responseOuterHTML: latestSnapshot?.html || ""
               }
             };
           }
         }
       }
+      const finalSnapshot = getResponseSnapshot();
       if (latest) return {
         ok: true,
         text: latest,
@@ -1541,24 +1593,24 @@ async function sendGeminiMessage(tabId, message) {
           currentNodeCount: latestNodeCount,
           responseLength: latest.length,
           stableCount,
-          responseText: latest
+          responseText: latest,
+          responseInnerText: latestSnapshot?.innerText || "",
+          responseTextContent: latestSnapshot?.textContent || "",
+          responseDeepText: latestSnapshot?.deepText || "",
+          responseOuterHTML: latestSnapshot?.html || ""
         }
       };
-      const currentNodes = Array.from(document.querySelectorAll(responseSelector));
       return {
         ok: false,
-        error: "Đã gửi nội dung nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini.",
+        error: "Đã gửi nội dung nhưng không đọc được nội dung câu trả lời mới sau 120 giây.",
         diagnostic: {
           href: location.href,
           title: document.title,
           editorTag: editor.tagName,
           responseSelector,
           oldNodeCount: oldCount,
-          currentNodeCount: currentNodes.length,
-          oldResponseText: oldText,
-          lastVisibleResponseText: currentNodes.length
-            ? (currentNodes[currentNodes.length - 1].innerText || "").trim()
-            : "",
+          currentNodeCount: finalSnapshot.nodes.length,
+          lastCandidate: finalSnapshot.candidates[finalSnapshot.candidates.length - 1] || null,
           pageTextTail: (document.body?.innerText || "").slice(-3000)
         }
       };
@@ -1580,8 +1632,11 @@ async function sendGeminiMessage(tabId, message) {
       stableCount: diagnostic.stableCount,
       generating: diagnostic.generating,
       responseText: diagnostic.responseText,
-      oldResponseText: diagnostic.oldResponseText,
-      lastVisibleResponseText: diagnostic.lastVisibleResponseText,
+      responseInnerText: diagnostic.responseInnerText,
+      responseTextContent: diagnostic.responseTextContent,
+      responseDeepText: diagnostic.responseDeepText,
+      responseOuterHTML: diagnostic.responseOuterHTML,
+      lastCandidate: diagnostic.lastCandidate,
       pageTextTail: diagnostic.pageTextTail
     }));
   } else {
