@@ -66,11 +66,11 @@
     <h1 style="font-size:16px;">Test tra cứu địa chỉ bằng Gemini</h1>
     <p class="desc">Dùng cuộc trò chuyện Gemini đã có sẵn context. Extension mở đúng link Gemini, tự nhập địa chỉ, gửi câu hỏi và hiển thị phản hồi tại đây. Chức năng chỉ chạy thử, không thay đổi đơn hàng.</p>
     <div class="divider"></div>
-    <h1 style="font-size:16px;">Cấu hình Gemini fallback cho địa chỉ</h1>
-    <p class="desc">Khi extension không chọn được địa giới hành chính bằng dữ liệu hiện tại, có thể nhờ Gemini tra cứu rồi thử chọn lại. Tắt tùy chọn này để bỏ qua Gemini fallback.</p>
+    <h1 style="font-size:16px;">Cấu hình Gemini chuẩn hóa địa chỉ</h1>
+    <p class="desc">Gemini được dùng để chuẩn hóa địa chỉ khi JavaScript không xác định đủ địa giới. DeepSeek không còn được gọi ở bước chuẩn hóa địa chỉ. Tắt tùy chọn này để chỉ dùng kết quả phân tích bằng JavaScript.</p>
     <label style="display:flex;align-items:center;gap:8px;margin:10px 0;">
       <input type="checkbox" id="geminiAddressFallbackEnabled" style="width:auto;" />
-      <span>Bật Gemini fallback khi không tìm/chọn được địa chỉ</span>
+      <span>Bật Gemini chuẩn hóa địa chỉ tự động</span>
     </label>
     <label for="geminiConversationUrl">Link cuộc trò chuyện Gemini</label>
     <input type="url" id="geminiConversationUrl" placeholder="https://gemini.google.com/app/..." autocomplete="off" />
