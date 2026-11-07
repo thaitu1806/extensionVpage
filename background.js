@@ -1434,36 +1434,24 @@ async function getIframeOffset(tabId) {
 }
 
 
-async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemini.google.com/app/b2af4712d4092d07") {
-  const address = String(rawAddress || "").trim();
-  if (!address) throw new Error("Địa chỉ không được để trống.");
-  if (address.length > 4000) throw new Error("Nội dung gửi Gemini quá dài (tối đa 4.000 ký tự).");
+// Khóa tuần tự để không gửi chồng nhiều yêu cầu vào cùng một cuộc trò chuyện Gemini.
+let _geminiRequestQueue = Promise.resolve();
 
-  let targetUrl;
-  try {
-    targetUrl = new URL(String(conversationUrl || "https://gemini.google.com/app/b2af4712d4092d07"));
-    if (targetUrl.protocol !== "https:" || targetUrl.hostname !== "gemini.google.com" || !targetUrl.pathname.startsWith("/app/")) {
-      throw new Error("Link Gemini không hợp lệ. Hãy kiểm tra cấu hình trong Options.");
-    }
-  } catch (error) {
-    throw new Error(error.message || "Link Gemini không hợp lệ.");
-  }
+const GEMINI_ADDRESS_CONTEXT_PROMPT =
+  "Bạn là trợ lý xác minh địa chỉ hành chính Việt Nam.\n" +
+  "Với mỗi địa chỉ tôi gửi tiếp theo, hãy xác định chính xác:\n" +
+  "- addressRegion: địa chỉ hành chính 3 cấp TRƯỚC ngày 01/07/2025, theo thứ tự Phường/Xã, Quận/Huyện/Thành phố thuộc tỉnh, Tỉnh/Thành phố.\n" +
+  "- addressRegion2: địa chỉ hành chính 2 cấp SAU ngày 01/07/2025, theo thứ tự Phường/Xã mới, Tỉnh/Thành phố.\n" +
+  "Tra cứu và đối chiếu nguồn đáng tin cậy; không suy đoán, không tự tạo đơn vị hành chính. Không đưa số nhà, tên đường, tòa nhà vào hai trường. Nếu không xác minh chắc chắn, để trường tương ứng là chuỗi rỗng.\n" +
+  "Luôn chỉ trả về một JSON object hợp lệ, không markdown, không giải thích, đúng hai khóa:\n" +
+  "{\"addressRegion\":\"\",\"addressRegion2\":\"\"}\n" +
+  "Hãy ghi nhớ các quy tắc này cho những địa chỉ tiếp theo trong cuộc trò chuyện.";
 
-  const tab = await chrome.tabs.create({
-    url: targetUrl.href,
-    active: true
-  });
-  for (let i = 0; i < 45; i++) {
-    const current = await chrome.tabs.get(tab.id);
-    if (current.status === "complete") break;
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
+async function sendGeminiMessage(tabId, message) {
   const injected = await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    args: [address],
-    func: async (addressText) => {
+    target: { tabId },
+    args: [message],
+    func: async (messageText) => {
       const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       const editorSelector = 'div[contenteditable="true"][role="textbox"], rich-textarea [contenteditable="true"], [contenteditable="true"], textarea';
       let editor = null;
@@ -1481,12 +1469,12 @@ async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemi
       editor.focus();
       if (editor.tagName === "TEXTAREA") {
         const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-        if (setter) setter.call(editor, addressText);
-        else editor.value = addressText;
+        if (setter) setter.call(editor, messageText);
+        else editor.value = messageText;
       } else {
-        editor.textContent = addressText;
+        editor.textContent = messageText;
       }
-      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: addressText }));
+      editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: messageText }));
       await sleep(700);
 
       const send = Array.from(document.querySelectorAll("button")).find(button => {
@@ -1514,7 +1502,7 @@ async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemi
         }
       }
       if (latest) return { ok: true, text: latest, warning: "Đã lấy nội dung nhưng chưa xác nhận Gemini hoàn tất." };
-      return { ok: false, error: "Đã gửi địa chỉ nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini." };
+      return { ok: false, error: "Đã gửi nội dung nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini." };
     }
   });
   const result = injected?.[0]?.result;
@@ -1522,6 +1510,83 @@ async function testAddressWithGemini(rawAddress, conversationUrl = "https://gemi
   return { ok: true, text: result.text, warning: result.warning || "" };
 }
 
+async function getReusableGeminiTab(conversationUrl) {
+  let targetUrl;
+  try {
+    targetUrl = new URL(String(conversationUrl || "https://gemini.google.com/app/b2af4712d4092d07"));
+    if (targetUrl.protocol !== "https:" || targetUrl.hostname !== "gemini.google.com" || !targetUrl.pathname.startsWith("/app/")) {
+      throw new Error("Link Gemini không hợp lệ. Hãy kiểm tra cấu hình trong Options.");
+    }
+  } catch (error) {
+    throw new Error(error.message || "Link Gemini không hợp lệ.");
+  }
+
+  const session = await chrome.storage.session.get({
+    geminiTabId: null,
+    geminiContextUrl: "",
+    geminiContextInitialized: false
+  });
+  let tab = null;
+  if (session.geminiTabId && session.geminiContextUrl === targetUrl.href) {
+    try {
+      const candidate = await chrome.tabs.get(session.geminiTabId);
+      const candidateUrl = new URL(candidate.url || "");
+      if (candidateUrl.origin === targetUrl.origin && candidateUrl.pathname === targetUrl.pathname) tab = candidate;
+    } catch (_) {}
+  }
+
+  if (!tab) {
+    const tabs = await chrome.tabs.query({});
+    tab = tabs.find(candidate => {
+      try {
+        const url = new URL(candidate.url || "");
+        return url.origin === targetUrl.origin && url.pathname === targetUrl.pathname;
+      } catch (_) { return false; }
+    }) || null;
+  }
+
+  if (!tab) tab = await chrome.tabs.create({ url: targetUrl.href, active: false });
+
+  for (let i = 0; i < 60; i++) {
+    const current = await chrome.tabs.get(tab.id);
+    if (current.status === "complete") { tab = current; break; }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  await new Promise(resolve => setTimeout(resolve, 1500));
+
+  const sameContext = session.geminiTabId === tab.id &&
+    session.geminiContextUrl === targetUrl.href &&
+    session.geminiContextInitialized === true;
+  await chrome.storage.session.set({
+    geminiTabId: tab.id,
+    geminiContextUrl: targetUrl.href,
+    geminiContextInitialized: sameContext
+  });
+  return { tab, targetUrl, contextInitialized: sameContext };
+}
+
+async function testAddressWithGemini(rawMessage, conversationUrl = "https://gemini.google.com/app/b2af4712d4092d07") {
+  const message = String(rawMessage || "").trim();
+  if (!message) throw new Error("Nội dung gửi Gemini không được để trống.");
+  if (message.length > 4000) throw new Error("Nội dung gửi Gemini quá dài (tối đa 4.000 ký tự).");
+
+  const run = _geminiRequestQueue.then(async () => {
+    const { tab, targetUrl, contextInitialized } = await getReusableGeminiTab(conversationUrl);
+    if (!contextInitialized) {
+      blog("Khởi tạo context Gemini trên tab dùng chung:", tab.id);
+      await sendGeminiMessage(tab.id, GEMINI_ADDRESS_CONTEXT_PROMPT);
+      await chrome.storage.session.set({
+        geminiTabId: tab.id,
+        geminiContextUrl: targetUrl.href,
+        geminiContextInitialized: true
+      });
+    }
+    blog("Tái sử dụng tab Gemini:", tab.id);
+    return await sendGeminiMessage(tab.id, message);
+  });
+  _geminiRequestQueue = run.catch(() => {});
+  return run;
+}
 
 // Dùng Gemini làm phương án dự phòng khi form Nhanh.vn không tìm/chọn được địa giới.
 async function resolveAddressWithGemini(address, knownRegion3, knownRegion2) {
