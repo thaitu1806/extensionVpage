@@ -565,12 +565,13 @@ async function fillForm(data) {
         _regionSelectedFromUniqueSuggestion = false;
         okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
         verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        verified = okRegion && (
+        const geminiLevelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+        verified = okRegion && geminiLevelVerified && (
           _regionSelectedFromUniqueSuggestion ||
           sameRegionSelection(verifiedRegion, data.addressRegion) ||
           sameRegionSelection(verifiedRegion, data.addressRegion2)
         );
-        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, đúngSốCấp=${geminiLevelVerified}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
       }
 
       if (verified) done.push("tỉnh/xã");
