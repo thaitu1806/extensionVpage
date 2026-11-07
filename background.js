@@ -1509,7 +1509,7 @@ async function sendGeminiMessage(tabId, message) {
           for (const child of Array.from(node.childNodes || [])) visit(child);
         };
         visit(root);
-        return chunks.join(" ").replace(/\\s+/g, " ").trim();
+        return chunks.join(" ").replace(/\s+/g, " ").trim();
       };
       const getResponseSnapshot = () => {
         const nodes = Array.from(document.querySelectorAll(responseSelector));
@@ -1518,7 +1518,7 @@ async function sendGeminiMessage(tabId, message) {
           const textContent = (node.textContent || "").trim();
           const deepText = readDeepText(node);
           const values = [innerText, textContent, deepText]
-            .map(value => value.replace(/\\s+/g, " ").trim())
+            .map(value => value.replace(/\s+/g, " ").trim())
             .filter(value => value && !/^gemini said$/i.test(value));
           const bestText = values.sort((a, b) => b.length - a.length)[0] || "";
           return {
