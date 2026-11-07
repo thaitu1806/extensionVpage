@@ -1447,6 +1447,11 @@ const GEMINI_ADDRESS_CONTEXT_PROMPT =
   "Hãy ghi nhớ các quy tắc này cho những địa chỉ tiếp theo trong cuộc trò chuyện.";
 
 async function sendGeminiMessage(tabId, message) {
+  blog("Gemini đọc ngầm: bắt đầu gửi prompt", {
+    tabId,
+    promptLength: String(message || "").length
+  });
+
   const injected = await chrome.scripting.executeScript({
     target: { tabId },
     args: [message],
@@ -1458,7 +1463,11 @@ async function sendGeminiMessage(tabId, message) {
         editor = document.querySelector(editorSelector);
         if (!editor) await sleep(1000);
       }
-      if (!editor) return { ok: false, error: "Không tìm thấy ô chat Gemini. Kiểm tra đăng nhập và thử lại." };
+      if (!editor) return {
+        ok: false,
+        error: "Không tìm thấy ô chat Gemini. Kiểm tra đăng nhập và thử lại.",
+        diagnostic: { href: location.href, title: document.title, editorFound: false }
+      };
 
       const responseSelector = "model-response, [data-test-id='model-response'], .model-response";
       const oldNodes = Array.from(document.querySelectorAll(responseSelector));
@@ -1485,6 +1494,7 @@ async function sendGeminiMessage(tabId, message) {
 
       let latest = "";
       let stableCount = 0;
+      let latestNodeCount = oldCount;
       const started = Date.now();
       while (Date.now() - started < 120000) {
         await sleep(1500);
@@ -1493,18 +1503,90 @@ async function sendGeminiMessage(tabId, message) {
         if (candidate && (nodes.length > oldCount || candidate !== oldText)) {
           if (candidate === latest) stableCount++;
           else { latest = candidate; stableCount = 0; }
+          latestNodeCount = nodes.length;
           const generating = Array.from(document.querySelectorAll("button")).some(button => {
             const label = [button.getAttribute("aria-label"), button.getAttribute("title")].join(" ").toLowerCase();
             return /stop generating|stop response|dừng/.test(label);
           });
-          if (stableCount >= 2 && !generating && latest.length > 10) return { ok: true, text: latest };
+          if (stableCount >= 2 && !generating && latest.length > 10) {
+            return {
+              ok: true,
+              text: latest,
+              diagnostic: {
+                href: location.href,
+                title: document.title,
+                editorTag: editor.tagName,
+                responseSelector,
+                oldNodeCount: oldCount,
+                currentNodeCount: latestNodeCount,
+                responseLength: latest.length,
+                stableCount,
+                generating,
+                responseText: latest
+              }
+            };
+          }
         }
       }
-      if (latest) return { ok: true, text: latest, warning: "Đã lấy nội dung nhưng chưa xác nhận Gemini hoàn tất." };
-      return { ok: false, error: "Đã gửi nội dung nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini." };
+      if (latest) return {
+        ok: true,
+        text: latest,
+        warning: "Đã lấy nội dung nhưng chưa xác nhận Gemini hoàn tất.",
+        diagnostic: {
+          href: location.href,
+          title: document.title,
+          editorTag: editor.tagName,
+          responseSelector,
+          oldNodeCount: oldCount,
+          currentNodeCount: latestNodeCount,
+          responseLength: latest.length,
+          stableCount,
+          responseText: latest
+        }
+      };
+      const currentNodes = Array.from(document.querySelectorAll(responseSelector));
+      return {
+        ok: false,
+        error: "Đã gửi nội dung nhưng không đọc được phản hồi mới sau 120 giây. Hãy kiểm tra tab Gemini.",
+        diagnostic: {
+          href: location.href,
+          title: document.title,
+          editorTag: editor.tagName,
+          responseSelector,
+          oldNodeCount: oldCount,
+          currentNodeCount: currentNodes.length,
+          oldResponseText: oldText,
+          lastVisibleResponseText: currentNodes.length
+            ? (currentNodes[currentNodes.length - 1].innerText || "").trim()
+            : "",
+          pageTextTail: (document.body?.innerText || "").slice(-3000)
+        }
+      };
     }
   });
+
   const result = injected?.[0]?.result;
+  if (result?.diagnostic) {
+    const diagnostic = result.diagnostic;
+    blog("Gemini đọc ngầm: kết quả DOM", JSON.stringify({
+      tabId,
+      href: diagnostic.href,
+      title: diagnostic.title,
+      editorTag: diagnostic.editorTag,
+      responseSelector: diagnostic.responseSelector,
+      oldNodeCount: diagnostic.oldNodeCount,
+      currentNodeCount: diagnostic.currentNodeCount,
+      responseLength: diagnostic.responseLength,
+      stableCount: diagnostic.stableCount,
+      generating: diagnostic.generating,
+      responseText: diagnostic.responseText,
+      oldResponseText: diagnostic.oldResponseText,
+      lastVisibleResponseText: diagnostic.lastVisibleResponseText,
+      pageTextTail: diagnostic.pageTextTail
+    }));
+  } else {
+    blog("Gemini đọc ngầm: không nhận được diagnostic từ tab", { tabId });
+  }
   if (!result?.ok) throw new Error(result?.error || "Không đọc được phản hồi Gemini.");
   return { ok: true, text: result.text, warning: result.warning || "" };
 }
