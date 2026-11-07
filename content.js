@@ -519,20 +519,23 @@ async function fillForm(data) {
       let verifiedRegion = getRegionDisplayText(findAddressRegionInput());
       // Điều kiện bắt buộc: chỉ có đúng 1 gợi ý và đã click chọn thành công
       // thì chấp nhận ngay, tuyệt đối không verify/fallback chọn lại.
-      let verified = okRegion && _regionSelectedFromUniqueSuggestion;
-      if (verified) {
-        log(`Chỉ có 1 gợi ý địa giới và đã chọn thành công -> CHẤP NHẬN NGAY, bỏ qua verify. Hiển thị="${verifiedRegion}"`);
-      } else {
-        verified = okRegion && sameRegionSelection(verifiedRegion, data.addressRegion);
-        log(`Chọn địa chỉ hành chính lần 1: chọn=${okRegion}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
-      }
+      // Dù chỉ có 1 gợi ý, vẫn phải kiểm tra placeholder có đúng số cấp.
+      // Không chấp nhận kết quả thiếu cấp hoặc thừa cấp chỉ vì click thành công.
+      const levelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+      let verified = okRegion && levelVerified && (
+        _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion)
+      );
+      log(`Chọn địa chỉ hành chính lần 1: chọn=${okRegion}, đúngSốCấp=${levelVerified}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
       if (!verified && !_regionSelectedFromUniqueSuggestion) {
         log("Địa chỉ hành chính chưa khớp sau lần 1; thử chọn lại một lần nữa.");
         _regionSelectedFromUniqueSuggestion = false;
         okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
         verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        verified = okRegion && (_regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion));
-        log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, xác minh=${verified}, duy nhất=${_regionSelectedFromUniqueSuggestion}, hiển thị="${verifiedRegion}"`);
+        const retryLevelVerified = hasExpectedRegionLevel(findAddressRegionInput());
+        verified = okRegion && retryLevelVerified && (
+          _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, data.addressRegion)
+        );
+        log(`Chọn địa chỉ hành chính lần 2: chọn=${okRegion}, đúngSốCấp=${retryLevelVerified}, xác minh=${verified}, duy nhất=${_regionSelectedFromUniqueSuggestion}, hiển thị="${verifiedRegion}"`);
       }
       if (!verified) {
         // Fallback Gemini chỉ chạy khi cả hai lần chọn địa giới hiện tại đều thất bại.
@@ -1139,6 +1142,23 @@ function getRegionDisplayText(input) {
   // Vpage thường hiển thị địa giới đã chọn trong placeholder, còn value có thể rỗng.
   if (placeholder.includes(",")) return placeholder;
   return (input.value || placeholder).trim();
+}
+
+// Xác minh số cấp thực tế mà Vpage đã chọn bằng placeholder:
+// 3 cấp phải có 2 dấu phẩy; 2 cấp phải có 1 dấu phẩy.
+// Dựa vào trạng thái toggle sau khi fillAddressRegion đã đồng bộ chế độ.
+function hasExpectedRegionLevel(input) {
+  const display = getRegionDisplayText(input);
+  if (!display) return false;
+  const commaCount = (display.match(/[,，]/g) || []).length;
+  const toggle = findTwoLevelToggle();
+  const isTwoLevel = !!(toggle?.cb?.checked);
+  const expectedCommaCount = isTwoLevel ? 1 : 2;
+  const valid = commaCount === expectedCommaCount;
+  if (!valid) {
+    log(`Placeholder địa giới chưa đúng số cấp: hiển thị="${display}", dấu phẩy=${commaCount}, yêu cầu=${expectedCommaCount} (${isTwoLevel ? "2 cấp" : "3 cấp"}).`);
+  }
+  return valid;
 }
 
  // So sánh địa giới đã chọn với địa chỉ khách cung cấp. Bỏ tiền tố loại địa giới
