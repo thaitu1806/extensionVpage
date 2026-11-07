@@ -1190,47 +1190,46 @@ async function runFill(tabId, options = {}) {
   // phát hiện & khôi phục các trường tiền bị thiếu số 0 (nhân 1000).
   normalizeMoneyFields(extracted);
 
-  // Chuẩn hóa địa chỉ: THỬ JS TRƯỚC; nếu thiếu/không rõ địa giới thì dùng Gemini.
-  // DeepSeek vẫn dùng cho trích xuất đơn hàng và tách combo, không còn dùng ở bước này.
+  // Chuẩn hóa địa chỉ: THỬ JS TRƯỚC; nếu thiếu/không rõ địa giới thì dùng DeepSeek.
+  // Gemini chỉ là phương án dự phòng ở content.js khi không tìm/chọn được địa giới
+  // hoặc placeholder sau khi chọn không đúng số cấp.
   if (addressNeedsAI(extracted)) {
     const rawAddr = [extracted.address, extracted.addressRegion].filter(Boolean).join(", ");
-    // Luôn có phương án 2 cấp từ dữ liệu JS để giữ nguyên dữ liệu nếu Gemini lỗi/tắt.
-    extracted.addressRegion2 = buildTwoLevelRegion(extracted.addressRegion);
-
-    let geminiEnabled = true;
+    blog("Địa chỉ chưa chuẩn -> gọi DeepSeek chuẩn hóa:", rawAddr);
     try {
-      const settings = await new Promise(resolve => chrome.storage.local.get({
-        geminiAddressFallbackEnabled: true
-      }, resolve));
-      geminiEnabled = settings.geminiAddressFallbackEnabled !== false;
-    } catch (e) {
-      blog("Không đọc được cấu hình Gemini, bỏ qua chuẩn hóa AI:", e.message);
-      geminiEnabled = false;
-    }
+      if (!cfg.apiToken) throw new Error("Chưa cấu hình API Token DeepSeek.");
+      const norm = await normalizeAddressWithAI({
+        apiToken: cfg.apiToken,
+        model: cfg.model,
+        rawAddress: rawAddr
+      });
+      const ward = String(norm?.ward || "").trim();
+      const district = String(norm?.district || "").trim();
+      const province = String(norm?.province || "").trim();
 
-    if (geminiEnabled) {
-      blog("Địa chỉ chưa chuẩn -> gọi Gemini chuẩn hóa:", rawAddr);
-      try {
-        const norm = await resolveAddressWithGemini(
-          rawAddr,
-          extracted.addressRegion,
-          extracted.addressRegion2
-        );
-        blog("Chuẩn hóa địa chỉ (Gemini):", JSON.stringify(norm));
-        if (norm?.addressRegion && norm?.addressRegion2) {
-          extracted.addressRegion = removeObsoleteHcmDistricts(norm.addressRegion, rawAddr);
-          extracted.addressRegion2 = removeObsoleteHcmDistricts(norm.addressRegion2, rawAddr);
+      if (ward && province) {
+        extracted.addressRegion = [ward, district, province].filter(Boolean).join(", ");
+        extracted.addressRegion2 = [ward, province].join(", ");
+        if (String(norm.detail || "").trim()) {
+          extracted.address = String(norm.detail).trim();
         }
-      } catch (e) {
-        blog("Gemini chuẩn hóa địa chỉ lỗi (giữ nguyên dữ liệu JS):", e.message);
+        blog("Chuẩn hóa địa chỉ (DeepSeek):", JSON.stringify({
+          detail: extracted.address,
+          addressRegion: extracted.addressRegion,
+          addressRegion2: extracted.addressRegion2
+        }));
+      } else {
+        extracted.addressRegion2 = buildTwoLevelRegion(extracted.addressRegion);
+        blog("DeepSeek chưa xác định đủ Phường/Xã và Tỉnh/Thành phố; giữ nguyên kết quả JS.", JSON.stringify(norm));
       }
-    } else {
-      blog("Gemini chuẩn hóa địa chỉ đang tắt trong Options; giữ kết quả JS.");
+    } catch (e) {
+      extracted.addressRegion2 = buildTwoLevelRegion(extracted.addressRegion);
+      blog("DeepSeek chuẩn hóa địa chỉ lỗi (giữ nguyên dữ liệu JS):", e.message);
     }
   } else {
-    // JS đã tách đủ -> tạo sẵn bản 2 cấp (bỏ cấp Quận/Huyện ở giữa).
     extracted.addressRegion2 = buildTwoLevelRegion(extracted.addressRegion);
-    blog(`Địa chỉ đã chuẩn (JS). 3 cấp="${extracted.addressRegion}", 2 cấp="${extracted.addressRegion2}"`);
+    blog("Địa chỉ đã chuẩn (JS). 3 cấp=" + JSON.stringify(extracted.addressRegion) +
+      ", 2 cấp=" + JSON.stringify(extracted.addressRegion2));
   }
 
   // Chỉ đổi Quy Nhơn -> Qui Nhơn trong địa chỉ hành chính 3 cấp; bản 2 cấp giữ Quy Nhơn.
