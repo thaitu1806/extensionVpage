@@ -1593,21 +1593,12 @@ async function resolveAddressWithGemini(address, knownRegion3, knownRegion2) {
   const rawAddress = String(address || "").trim();
   if (!rawAddress) throw new Error("Không có địa chỉ gốc để Gemini tra cứu.");
 
-  const prompt = `Hãy tra cứu và xác minh địa chỉ Việt Nam sau để chọn đúng đơn vị hành chính trong form giao hàng Nhanh.vn.
-
-Địa chỉ khách cung cấp: "${rawAddress}"
-Thông tin địa giới đã trích xuất (có thể sai hoặc thiếu):
-- addressRegion: "${String(knownRegion3 || "").trim()}"
-- addressRegion2: "${String(knownRegion2 || "").trim()}"
-
-Yêu cầu:
-- Xác minh địa chỉ thực tế, ưu tiên nguồn chính thức và đối chiếu tên phường/xã, quận/huyện (nếu còn trong dữ liệu form), tỉnh/thành.
-- addressRegion: chuỗi địa giới 3 cấp theo thứ tự Phường/Xã, Quận/Huyện/Thành phố thuộc tỉnh, Tỉnh/Thành phố; nếu địa chỉ hiện chỉ còn 2 cấp thì ghi đúng 2 cấp, không tự tạo cấp huyện.
-- addressRegion2: chuỗi địa giới 2 cấp theo thứ tự Phường/Xã mới, Tỉnh/Thành phố.
-- Không đưa số nhà, tên đường, tòa nhà vào hai trường địa giới.
-- Không đoán hoặc tự tạo đơn vị hành chính. Nếu không xác minh chắc chắn, để trường tương ứng là chuỗi rỗng.
-- Chỉ trả về một JSON object, không markdown, không giải thích, đúng hai khóa:
-{"addressRegion":"","addressRegion2":""}`;
+  const prompt =
+    "Hãy tra cứu địa chỉ hành chính sau theo đúng quy tắc đã thống nhất trong cuộc trò chuyện. " +
+    "Trả về duy nhất JSON hợp lệ với đúng hai khóa addressRegion và addressRegion2; không markdown, không giải thích.\n" +
+    "Địa chỉ cần tra cứu: \"" + rawAddress + "\"\n" +
+    "Địa giới 3 cấp đã trích xuất (có thể sai/thiếu): \"" + String(knownRegion3 || "").trim() + "\"\n" +
+    "Địa giới 2 cấp đã trích xuất (có thể sai/thiếu): \"" + String(knownRegion2 || "").trim() + "\"";
 
   const cfg = await new Promise(resolve => chrome.storage.local.get({
     geminiAddressFallbackEnabled: true,
