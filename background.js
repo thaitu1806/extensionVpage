@@ -1142,7 +1142,7 @@ async function runFill(tabId, options = {}) {
 
   // Nội dung trong ngoặc đơn ở địa chỉ được giữ lại dưới dạng ghi chú khách hàng.
   moveAddressParenthesesToNote(extracted);
-  blog("Dữ liệu trích xuất:", JSON.stringify(extracted));
+  blog("Dữ liệu trích xuất ban đầu (địa chỉ chưa qua bước chuẩn hóa):", JSON.stringify(extracted));
 
   // Nếu sản phẩm có COMBO cần tách, nhờ DeepSeek phân rã + map tên chuẩn theo CATALOG.
   if (cfg.apiToken && productsNeedExpand(extracted.products)) {
