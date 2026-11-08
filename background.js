@@ -2589,18 +2589,15 @@ async function runScanCycle() {
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
   const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
   const incremental = cfg.scanStrategy === "incremental" && scanMode === "recent5";
-  let conversations = await listConversations(tab.id, scanMode, incremental ? 50 : recentCount);
-  let checkpointAt = 0;
+  // Không dùng activityAt/checkpoint để loại box: nhãn "6 giờ trước", "7 giờ trước"
+  // của Vpage là thời gian tương đối đã làm tròn, không phải timestamp chính xác.
+  // Checkpoint kiểu max(timestamp) có thể nằm ở tương lai so với nhãn sau khi nhảy
+  // từ "5 giờ" sang "6 giờ", khiến bộ lọc trả về 0 box và bỏ sót hội thoại.
+  // Thay vào đó, mỗi lượt lấy trực tiếp N box đầu danh sách (mới nhất trước);
+  // chống gửi trùng vẫn do tgNotified xử lý.
+  const conversations = await listConversations(tab.id, scanMode, recentCount);
   if (incremental) {
-    const checkpoint = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
-    checkpointAt = Number(checkpoint.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
-    if (checkpointAt > 0) {
-      const overlapMs = 2 * 60 * 1000;
-      conversations = conversations.filter((conv) => conv.activityAt > 0 && conv.activityAt >= checkpointAt - overlapMs);
-      blog(`Incremental scan: mốc=${new Date(checkpointAt).toLocaleString("vi-VN")}, cửa sổ đệm 2 phút, còn ${conversations.length} box cần kiểm tra.`);
-    } else {
-      blog("Incremental scan: chưa có mốc đã quét; dùng thời điểm lưu cấu hình làm mốc ban đầu.");
-    }
+    blog(`Incremental scan an toàn: quét ${conversations.length} box đầu danh sách; bỏ lọc timestamp tương đối/checkpoint.`);
   }
   blog(scanMode === "recent5"
     ? `Quét: ${conversations.length} box ${incremental ? "theo mốc hoạt động mới" : "gần nhất"} (bao gồm đã đọc/chưa đọc).`
@@ -2854,12 +2851,8 @@ async function runScanCycle() {
 
   // Mỗi box đã được xử lý trọn vẹn bên trong vòng lặp trước khi sang box tiếp theo.
   blog(`Tuần tự: hoàn tất lượt quét ${scanned}/${conversations.length} box; không xử lý song song.`);
-  const saveState = { tgNotified: notified };
-  if (incremental) {
-    const maxActivityAt = Math.max(0, ...conversations.map((conv) => Number(conv.activityAt) || 0));
-    if (maxActivityAt > 0) saveState.scanActivityCheckpoint = Math.max(checkpointAt, maxActivityAt);
-  }
-  await chrome.storage.local.set(saveState);  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
+  await chrome.storage.local.set({ tgNotified: notified });
+  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
 }
 
 function escapeHtml(s) {
