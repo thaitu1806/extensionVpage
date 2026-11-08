@@ -1145,23 +1145,73 @@ function getRegionDisplayText(input) {
   return (input.value || placeholder).trim();
 }
 
-// Xác minh số cấp theo ĐỊA CHỈ ĐẦU VÀO, không đọc lại toggle UI.
-// Nhanh.vn có thể thay đổi/render lại checkbox sau khi chọn suggestion, khiến
-// trạng thái checked đọc được không còn phản ánh chế độ đã dùng để tìm kiếm.
-// Địa chỉ 2 cấp (Phường/Xã + Tỉnh/Thành phố) có 1 dấu phẩy; 3 cấp có 2.
+// Danh sách tỉnh/thành dùng để phân biệt đúng địa chỉ 2 cấp sau 01/07/2025
+// với tên thành phố/quận cũ (ví dụ Thủ Đức không phải tỉnh/thành).
+function normalizeProvinceKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[.,]/g, " ")
+    .replace(/[–—]/g, "-")
+    .replace(/^(tinh|thanh pho|tp\.?)[ \t]+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const PRE_MERGER_PROVINCES = [
+  "An Giang", "Bà Rịa - Vũng Tàu", "Bắc Giang", "Bắc Kạn", "Bạc Liêu",
+  "Bắc Ninh", "Bến Tre", "Bình Định", "Bình Dương", "Bình Phước",
+  "Bình Thuận", "Cà Mau", "Cần Thơ", "Cao Bằng", "Đà Nẵng", "Đắk Lắk",
+  "Đắk Nông", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Giang",
+  "Hà Nam", "Hà Nội", "Hà Tĩnh", "Hải Dương", "Hải Phòng", "Hậu Giang",
+  "Hòa Bình", "Hưng Yên", "Khánh Hòa", "Kiên Giang", "Kon Tum", "Lai Châu",
+  "Lạng Sơn", "Lào Cai", "Lâm Đồng", "Long An", "Nam Định", "Nghệ An",
+  "Ninh Bình", "Ninh Thuận", "Phú Thọ", "Phú Yên", "Quảng Bình",
+  "Quảng Nam", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sóc Trăng",
+  "Sơn La", "Tây Ninh", "Thái Bình", "Thái Nguyên", "Thanh Hóa",
+  "Thừa Thiên Huế", "Tiền Giang", "TP. Hồ Chí Minh", "Trà Vinh",
+  "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"
+].map(normalizeProvinceKey);
+
+const POST_MERGER_PROVINCES = [
+  "An Giang", "Bắc Ninh", "Cà Mau", "Cao Bằng", "Cần Thơ", "Đà Nẵng",
+  "Đắk Lắk", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Nội",
+  "Hà Tĩnh", "Hải Phòng", "Hồ Chí Minh", "Huế", "Hưng Yên", "Khánh Hòa",
+  "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Nghệ An", "Ninh Bình",
+  "Phú Thọ", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sơn La", "Tây Ninh",
+  "Thái Nguyên", "Thanh Hóa", "Tuyên Quang", "Vĩnh Long"
+].map(normalizeProvinceKey);
+
+function isKnownPreMergerProvince(value) {
+  return PRE_MERGER_PROVINCES.includes(normalizeProvinceKey(value));
+}
+
+function isKnownPostMergerProvince(value) {
+  return POST_MERGER_PROVINCES.includes(normalizeProvinceKey(value));
+}
+
+// Xác minh theo số cấp và tỉnh/thành hợp lệ, không dựa vào trạng thái toggle UI.
 function hasExpectedRegionLevel(input, expectedRegion) {
   const display = getRegionDisplayText(input);
   if (!display) return false;
-  const commaCount = (display.match(/[,，]/g) || []).length;
+  const displayParts = display.split(/[,，]/).map(s => s.trim()).filter(Boolean);
   const expectedParts = String(expectedRegion || "").split(/[,，]/).map(s => s.trim()).filter(Boolean);
-  const expectedCommaCount = Math.max(0, expectedParts.length - 1);
-  const valid = expectedParts.length >= 2 && commaCount === expectedCommaCount;
+  let valid = expectedParts.length >= 2 && displayParts.length === expectedParts.length;
+
+  if (valid && expectedParts.length === 2) {
+    valid = isKnownPostMergerProvince(expectedParts[1])
+      && isKnownPostMergerProvince(displayParts[1]);
+  } else if (valid && expectedParts.length === 3) {
+    valid = isKnownPreMergerProvince(expectedParts[2])
+      && isKnownPreMergerProvince(displayParts[2]);
+  }
+
   if (!valid) {
-    log(`Placeholder địa giới chưa đúng số cấp: hiển thị="${display}", dấu phẩy=${commaCount}, địa chỉ yêu cầu="${expectedRegion}", dấu phẩy yêu cầu=${expectedCommaCount}.`);
+    log(`Placeholder địa giới chưa đúng cấu trúc/tỉnh thành: hiển thị="${display}", địa chỉ yêu cầu="${expectedRegion}", số cấp yêu cầu=${expectedParts.length}, số cấp thực tế=${displayParts.length}.`);
   }
   return valid;
 }
-
  // So sánh địa giới đã chọn với địa chỉ khách cung cấp. Bỏ tiền tố loại địa giới
  // và chuẩn hóa bí danh tỉnh/thành để "TP Thủ Đức" không lệch vì cách viết.
 function normalizeAdminName(value) {
@@ -1245,64 +1295,33 @@ async function fillAddressRegion(region3, region2) {
   const input = findAddressRegionInput();
   if (!input) { log("fillAddressRegion: không thấy ô địa chỉ hành chính."); return false; }
 
-  // Địa chỉ CÓ PHẢI 2 CẤP không? (chỉ 2 cụm: Phường + Tỉnh, KHÔNG có Quận/Huyện).
-  const parts3 = (region3 || "").split(",").map((s) => s.trim()).filter(Boolean);
-  // LƯU Ý: KHÔNG dùng \b quanh từ khoá tiếng Việt. Ký tự có dấu (ã, ị, ...)
-  // không phải "word char" trong regex JS, nên \b sau "xã"/"ị" KHÔNG tạo ranh
-  // giới -> /\bthị xã\b/ KHÔNG khớp "Thị xã Bến Cát" (bug cũ khiến bỏ qua cấp 3).
-  // Dùng ranh giới tự chế: đầu chuỗi/khoảng trắng ... theo sau là khoảng trắng.
-
-  // hasDistrictKeyword: có cụm Quận/Huyện/Thị xã/Thị trấn/Thành phố RÕ RÀNG.
+  // Địa chỉ 2 cấp chỉ hợp lệ khi phần thứ hai là một trong 34 tỉnh/thành
+  // sau sáp nhập. Không được coi tên thành phố/quận cũ như "Thủ Đức" là tỉnh.
+  const parts3 = (region3 || "").split(/[,，]/).map((s) => s.trim()).filter(Boolean);
   const hasDistrictKeyword = parts3.some((p) =>
     /(^|\s)(quận|huyện|thị xã|thị trấn|thành phố)(\s|$)/i.test(p));
-
-  // Các tỉnh/thành dưới đây đã bị gom dữ liệu địa giới trên hệ thống.
-  // Với địa chỉ thuộc các tỉnh này, mặc định ép cấp 3 và không fallback về cấp 2.
-  const groupedProvinceNames = [
-    "Hà Giang", "Yên Bái", "Bắc Kạn", "Hòa Bình", "Vĩnh Phúc",
-    "Bắc Giang", "Thái Bình", "Hải Dương", "Hà Nam", "Nam Định",
-    "Quảng Bình", "Quảng Nam", "Kon Tum", "Bình Định", "Phú Yên",
-    "Ninh Thuận", "Đắk Nông", "Bình Thuận", "Bà Rịa – Vũng Tàu",
-    "Bà Rịa - Vũng Tàu", "Bình Dương", "Bình Phước", "Long An",
-    "Bến Tre", "Trà Vinh", "Sóc Trăng", "Hậu Giang", "Tiền Giang",
-    "Kiên Giang", "Bạc Liêu"
-  ];
-  const normalizeProvince = (value) => String(value || "")
-    .toLowerCase()
-    .replace(/đ/g, "d")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[–—]/g, "-")
-    .replace(/^(tinh|thanh pho|tp\.?)[ \t]+/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const groupedProvinceKeys = groupedProvinceNames.map(normalizeProvince);
-  const hasGroupedProvince = parts3.some((part) => {
-    const normalizedPart = normalizeProvince(part);
-    return groupedProvinceKeys.some((province) =>
-      normalizedPart === province || normalizedPart.endsWith(" " + province)
-    );
-  });
-
-  // hasDistrict: địa chỉ có CẤP HUYỆN hay không? Dùng để quyết định toggle 2/3 cấp.
-  // Đủ 3 cụm (Phường, Quận/TP, Tỉnh) HOẶC có từ khóa cấp huyện => 3 cấp.
-  const hasDistrict = parts3.length >= 3 || hasDistrictKeyword;
-
-  // hasNumberedWard: Phường dạng SỐ ("Phường 1", "Phường 09", ...).
   const hasNumberedWard = parts3.some((p) => {
     const noAccent = p.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return /\bphuong\s*\d+\b/.test(noAccent);
   });
-
-  // forceLevel3: ép cấp 3 với phường dạng số, địa chỉ có cấp huyện rõ ràng,
-  // hoặc tỉnh thuộc danh sách đã bị gom dữ liệu địa giới.
-  // Với các tỉnh bị gom, tuyệt đối không fallback về cấp 2.
-  const forceLevel3 = hasNumberedWard || hasDistrictKeyword || hasGroupedProvince;
-
-  const isTwoLevel = forceLevel3 ? false : (parts3.length <= 2 || !hasDistrict);
   const r2 = region2 || region3;
+
+  const looksLikeTwoLevel = parts3.length === 2 && !hasDistrictKeyword;
+  const validTwoLevelProvince = looksLikeTwoLevel && isKnownPostMergerProvince(parts3[1]);
+  if (looksLikeTwoLevel && !validTwoLevelProvince) {
+    log(`fillAddressRegion: từ chối cấu trúc 2 cấp vì "${parts3[1]}" không nằm trong danh sách 34 tỉnh/thành sau sáp nhập. Thủ Đức không phải tỉnh/thành.`);
+    return false;
+  }
+
+  if (parts3.length === 3 && !isKnownPreMergerProvince(parts3[2])) {
+    log(`fillAddressRegion: từ chối cấu trúc 3 cấp vì "${parts3[2]}" không nằm trong danh sách 63 tỉnh/thành trước sáp nhập.`);
+    return false;
+  }
+
+  const forceLevel3 = hasNumberedWard || hasDistrictKeyword || parts3.length >= 3;
+  const isTwoLevel = validTwoLevelProvince && !forceLevel3;
   if (forceLevel3) {
-    log(`fillAddressRegion: ÉP CẤP 3 (ward0x=${hasNumberedWard}, districtKw=${hasDistrictKeyword}) -> chỉ tìm 3 cấp.`);
+    log(`fillAddressRegion: ÉP CẤP 3 (ward0x=${hasNumberedWard}, districtKw=${hasDistrictKeyword}, parts=${parts3.length}) -> chỉ tìm 3 cấp.`);
   }
 
   // BƯỚC 1: CLICK THẬT vào ô địa chỉ để mở + focus.
