@@ -2600,7 +2600,7 @@ async function runScanCycle() {
     blog(`Incremental scan an toàn: quét ${conversations.length} box đầu danh sách; bỏ lọc timestamp tương đối/checkpoint.`);
   }
   blog(scanMode === "recent5"
-    ? `Quét: ${conversations.length} box ${incremental ? "theo mốc hoạt động mới" : "gần nhất"} (bao gồm đã đọc/chưa đọc).`
+    ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
     : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
   if (!conversations.length) return;
 
