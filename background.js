@@ -2589,20 +2589,33 @@ async function runScanCycle() {
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
   const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
   const incremental = cfg.scanStrategy === "incremental" && scanMode === "recent5";
-  // Không dùng activityAt/checkpoint để loại box: nhãn "6 giờ trước", "7 giờ trước"
-  // của Vpage là thời gian tương đối đã làm tròn, không phải timestamp chính xác.
-  // Checkpoint kiểu max(timestamp) có thể nằm ở tương lai so với nhãn sau khi nhảy
-  // từ "5 giờ" sang "6 giờ", khiến bộ lọc trả về 0 box và bỏ sót hội thoại.
-  // Thay vào đó, mỗi lượt lấy trực tiếp N box đầu danh sách (mới nhất trước);
-  // chống gửi trùng vẫn do tgNotified xử lý.
-  const conversations = await listConversations(tab.id, scanMode, recentCount);
+  const scanStartedAt = Date.now();
+  let checkpointAt = 0;
+  let conversations;
   if (incremental) {
-    blog(`Incremental scan an toàn: quét ${conversations.length} box đầu danh sách; bỏ lọc timestamp tương đối/checkpoint.`);
+    const saved = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
+    checkpointAt = Number(saved.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
+    // Lấy tối đa 50 box để không bỏ sót box mới hoạt động nằm sau các box cũ.
+    const candidates = await listConversations(tab.id, scanMode, 50);
+    const overlapMs = 2 * 60 * 1000;
+    conversations = candidates.filter((conv) =>
+      Number(conv.activityAt) > 0 && Number(conv.activityAt) >= checkpointAt - overlapMs
+    );
+    blog(`Incremental scan: mốc=${checkpointAt ? new Date(checkpointAt).toLocaleString("vi-VN") : "chưa có"}, cửa sổ đệm 2 phút, đọc ${candidates.length} box, còn ${conversations.length} box cần kiểm tra.`);
+    blog("Incremental candidates:", conversations.map((x) => `${x.name} (${x.timeText})`).join(" | ") || "(không có)");
+  } else {
+    conversations = await listConversations(tab.id, scanMode, recentCount);
   }
   blog(scanMode === "recent5"
-    ? `Quét: ${conversations.length} box gần nhất (bao gồm đã đọc/chưa đọc).`
+    ? `Quét: ${conversations.length} box ${incremental ? "có hoạt động mới" : "gần nhất"} (bao gồm đã đọc/chưa đọc).`
     : `Quét: ${conversations.length} hội thoại CHƯA ĐỌC.`);
-  if (!conversations.length) return;
+  if (!conversations.length) {
+    if (incremental) {
+      await chrome.storage.local.set({ scanActivityCheckpoint: scanStartedAt });
+      blog(`Incremental scan: không có box mới; cập nhật checkpoint ${new Date(scanStartedAt).toLocaleString("vi-VN")}.`);
+    }
+    return;
+  }
 
   // Chống gửi trùng: lưu key (phone/text) đã thông báo (dọn mục > 24h).
   const st = await chrome.storage.local.get({ tgNotified: {} });
@@ -2852,7 +2865,13 @@ async function runScanCycle() {
   // Mỗi box đã được xử lý trọn vẹn bên trong vòng lặp trước khi sang box tiếp theo.
   blog(`Tuần tự: hoàn tất lượt quét ${scanned}/${conversations.length} box; không xử lý song song.`);
   await chrome.storage.local.set({ tgNotified: notified });
-  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? `${recentCount} box gần nhất` : "chưa đọc"}).`);
+  if (incremental) {
+    // Lưu thời điểm bắt đầu lượt quét sau khi đã xử lý xong toàn bộ box.
+    // Lượt sau dùng cửa sổ đệm 2 phút để bắt các hoạt động sát ranh giới.
+    await chrome.storage.local.set({ scanActivityCheckpoint: scanStartedAt });
+    blog(`Incremental scan: cập nhật checkpoint ${new Date(scanStartedAt).toLocaleString("vi-VN")} sau khi hoàn tất.`);
+  }
+  blog(`Quét xong: duyệt tuần tự ${scanned}/${conversations.length} box (${scanMode === "recent5" ? (incremental ? "incremental" : `${recentCount} box gần nhất`) : "chưa đọc"}).`);
 }
 
 function escapeHtml(s) {
