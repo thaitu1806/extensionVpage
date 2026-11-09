@@ -2600,11 +2600,9 @@ async function runScanCycle() {
 
     // Nếu dữ liệu danh sách không đổi trong 5 chu kỳ quét liên tiếp (mỗi chu kỳ 3 phút),
     // thử reload Vpage một lần để đồng bộ lại DOM/state đang bị stale.
-    const snapshot = JSON.stringify(candidates.map((conv) => ({
-      id: conv.id || "",
-      name: conv.name || "",
-      timeText: conv.timeText || "",
-      preview: conv.preview || ""
+    const snapshot = JSON.stringify(candidates.map((conv, index) => ({
+      index,
+      name: String(conv.name || "").trim()
     })));
     const scanState = await chrome.storage.local.get({
       scanDomFingerprint: "",
