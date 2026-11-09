@@ -2596,7 +2596,57 @@ async function runScanCycle() {
     const saved = await chrome.storage.local.get({ scanActivityCheckpoint: 0 });
     checkpointAt = Number(saved.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
     // Lấy tối đa 50 box để không bỏ sót box mới hoạt động nằm sau các box cũ.
-    const candidates = await listConversations(tab.id, scanMode, 50);
+    let candidates = await listConversations(tab.id, scanMode, 50);
+
+    // Nếu dữ liệu danh sách không đổi trong 5 chu kỳ quét liên tiếp (mỗi chu kỳ 3 phút),
+    // thử reload Vpage một lần để đồng bộ lại DOM/state đang bị stale.
+    const snapshot = JSON.stringify(candidates.map((conv) => ({
+      id: conv.id || "",
+      name: conv.name || "",
+      timeText: conv.timeText || "",
+      preview: conv.preview || ""
+    })));
+    const scanState = await chrome.storage.local.get({
+      scanDomFingerprint: "",
+      scanDomUnchangedCount: 0
+    });
+    const unchangedCount = scanState.scanDomFingerprint === snapshot
+      ? Number(scanState.scanDomUnchangedCount || 0) + 1
+      : 0;
+
+    if (unchangedCount >= 5) {
+      blog("DOM Vpage không thay đổi qua 5 lần quét; thử refresh tab để đồng bộ danh sách.");
+      await chrome.storage.local.set({
+        scanDomFingerprint: snapshot,
+        scanDomUnchangedCount: 0,
+        scanDomLastRefreshAt: Date.now()
+      });
+      try {
+        await chrome.tabs.reload(tab.id);
+        const loaded = await waitTabComplete(tab.id, 30000);
+        if (loaded) {
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
+          if (refreshedCandidates.length) {
+            candidates = refreshedCandidates;
+            blog(`Refresh Vpage thành công: tải lại được ${candidates.length} box.`);
+          } else {
+            blog("Refresh Vpage xong nhưng danh sách chưa có box; giữ danh sách trước refresh để tránh mất dữ liệu.");
+          }
+        } else {
+          blog("Refresh Vpage quá thời gian chờ 30 giây; tiếp tục với dữ liệu danh sách trước refresh.");
+        }
+      } catch (refreshError) {
+        blog("Refresh Vpage lỗi:", refreshError?.message || refreshError);
+      }
+    } else {
+      await chrome.storage.local.set({
+        scanDomFingerprint: snapshot,
+        scanDomUnchangedCount: unchangedCount
+      });
+      blog(`DOM snapshot: dữ liệu ${unchangedCount + 1} lần liên tiếp chưa thay đổi (ngưỡng refresh: 5).`);
+    }
+
     const overlapMs = 2 * 60 * 1000;
     conversations = candidates.filter((conv) =>
       Number(conv.activityAt) > 0 && Number(conv.activityAt) >= checkpointAt - overlapMs
