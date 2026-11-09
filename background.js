@@ -2612,7 +2612,7 @@ async function runScanCycle() {
     });
     const unchangedCount = scanState.scanDomFingerprint === snapshot
       ? Number(scanState.scanDomUnchangedCount || 0) + 1
-      : 0;
+      : 1;
 
     if (unchangedCount >= 5) {
       blog("DOM Vpage không thay đổi qua 5 lần quét; thử refresh tab để đồng bộ danh sách.");
@@ -2644,7 +2644,7 @@ async function runScanCycle() {
         scanDomFingerprint: snapshot,
         scanDomUnchangedCount: unchangedCount
       });
-      blog(`DOM snapshot: dữ liệu ${unchangedCount + 1} lần liên tiếp chưa thay đổi (ngưỡng refresh: 5).`);
+      blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: 5).`);
     }
 
     const overlapMs = 2 * 60 * 1000;
