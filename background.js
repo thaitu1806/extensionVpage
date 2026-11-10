@@ -308,7 +308,7 @@ function parseProductLines(block) {
 
   // Shop đôi khi ghi số lượng ở cuối tên: "Gạo Thường (Không Cay) 250g x 3 túi".
   // Chuẩn hóa sang format catalog trước khi áp dụng bộ parser chung.
-  const normalizedBlock = block.replace(
+  let normalizedBlock = block.replace(
     /(?:Cơm\s*cháy\s*)?Gạo\s*Thường\s*\((Cay\s*Vừa|Siêu\s*Cay|Không\s*Cay)\)\s*\d+\s*g\s*x\s*(\d+)\s*túi\b/gi,
     (_, flavor, qty) => "\n" + qty + " x Cơm cháy Gạo Thường - " + flavor.replace(/\s+/g, " ").trim()
   );
