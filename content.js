@@ -249,6 +249,10 @@ function isOrderConfirmation(t) {
       /Sản ?phẩm\s*:/i.test(t) &&
       (/\d+\s*x\s*\S/i.test(t) ||
        /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t))) return true;
+  // Business Agent có thể liệt kê từng sản phẩm kèm giá, không ghi số lượng.
+  if (/(Số điện thoại|Điện thoại)/i.test(t) &&
+      /Sản ?phẩm\s*:/i.test(t) &&
+      /(?:^|\n)\s*[^\n]{3,}\s[-–]\s*\d{4,}\s*(?:VND|VNĐ|đ)\b/im.test(t)) return true;
   return false;
 }
 
