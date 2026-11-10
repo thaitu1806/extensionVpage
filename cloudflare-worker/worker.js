@@ -55,11 +55,17 @@ async function handleTelegram(request, env) {
  if (cq) {
   const chatId = cq.message && cq.message.chat && cq.message.chat.id;
   if (!chatIdAllowed(env, chatId)) { await answerCallback(env, cq.id, "Không có quyền."); return json({ ok: true }); }
-  const match = String(cq.data || "").match(/^fill:(\d{6,15})$/);
-  if (!match) { await answerCallback(env, cq.id, "Lệnh không hợp lệ."); return json({ ok: true }); }
-  const command = { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: "fill", phone: match[1], chatId, ts: Date.now() };
+  const data = String(cq.data || "");
+  const cidMatch = data.match(/^fillcid:(\\d+_\\d+)$/);
+  const phoneMatch = data.match(/^fill:(\\d{6,15})$/);
+  if (!cidMatch && !phoneMatch) { await answerCallback(env, cq.id, "Lệnh không hợp lệ."); return json({ ok: true }); }
+  const command = cidMatch
+   ? { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: "fill", cid: cidMatch[1], chatId, ts: Date.now() }
+   : { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: "fill", phone: phoneMatch[1], chatId, ts: Date.now() };
   await env.ORDERS_QUEUE.send(command);
-  await answerCallback(env, cq.id, "Đã nhận lệnh lên đơn cho " + command.phone + ". Đang chuyển đến extension...");
+  await answerCallback(env, cq.id, cidMatch
+   ? "Đã nhận lệnh lên đơn theo CID " + command.cid + ". Đang chuyển đến extension..."
+   : "Đã nhận lệnh lên đơn cho " + command.phone + ". Đang chuyển đến extension...");
   return json({ ok: true, queued: true, id: command.id });
  }
 
@@ -146,7 +152,7 @@ export class CommandHub {
   if (url.pathname === "/enqueue" && request.method === "POST") {
    if (!this.env.PULL_SECRET || request.headers.get("x-internal-secret") !== this.env.PULL_SECRET) return json({ ok: false, error: "bad secret" }, 401);
    const cmd = await request.json().catch(() => null);
-   if (!cmd || !cmd.id || !cmd.type || (cmd.type === "fill" && !cmd.phone)) return json({ ok: false, error: "invalid command" }, 400);
+   if (!cmd || !cmd.id || !cmd.type || (cmd.type === "fill" && !(/^\\d{6,15}$/.test(String(cmd.phone || "")) || /^\\d+_\\d+$/.test(String(cmd.cid || ""))))) return json({ ok: false, error: "invalid command" }, 400);
    await this.state.storage.put("cmd:" + cmd.id, cmd);
    for (const ws of this.state.getWebSockets()) try { ws.send(JSON.stringify({ type: "command", command: cmd })); } catch (_) {}
    return json({ ok: true });
