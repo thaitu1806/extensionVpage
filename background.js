@@ -313,6 +313,14 @@ function parseProductLines(block) {
     (_, flavor, qty) => "\n" + qty + " x Cơm cháy Gạo Thường - " + flavor.replace(/\s+/g, " ").trim()
   );
 
+  // Mỗi dòng sản phẩm không ghi số lượng mặc định là 1 x.
+  normalizedBlock = normalizedBlock.split(/\r?\n/).map((line) => {
+    const value = line.trim();
+    if (!value || /^\+?\s*\d+\s*[x*]\s*\S/i.test(value)) return line;
+    if (/^combo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(value)) return line;
+    return "1 x " + value;
+  }).join("\n");
+
   // Tách thành từng "đơn vị" bắt đầu bằng [+ optional] SL x ...
   // Dùng lookahead tới điểm bắt đầu dòng sản phẩm kế tiếp (hoặc hết chuỗi).
   const unitRe = /\+?\s*(\d+)\s*x\s*([\s\S]*?)(?=(?:\+?\s*\d+\s*x\s)|$)/gi;
