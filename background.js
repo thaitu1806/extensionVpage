@@ -335,14 +335,16 @@ function parseProductLines(block) {
     // phòng trường hợp văn bản dán có ký tự/dấu câu dư ở cuối.
     const priceM = rest.match(/\(\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*\)/)
       || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})(?=\s|[;,]|$)/);
+    let priceExplicit = false;
     if (priceM) {
       price = toNumber(priceM[1]);
+      priceExplicit = price > 0;
       rest = rest.slice(0, priceM.index).trim();
     }
 
     // Bỏ dấu phẩy/chấm/chấm phẩy cuối dòng thừa.
     const name = rest.replace(/[.,;]\s*$/, "").trim();
-    if (name) products.push({ quantity: qty || 1, name, price });
+    if (name) products.push({ quantity: qty || 1, name, price, priceExplicit });
   }
   return products;
 }
@@ -538,7 +540,12 @@ Trả về DUY NHẤT JSON hợp lệ (không markdown):
   "note": ""
 }
 
-Quy tắc số: '219K' hoặc '219k' = 219000; bỏ dấu phẩy/chấm phân cách; 'freeship'/'FREESHIP' => shippingFee = 0.
+Quy tắc giá sản phẩm rất quan trọng:
+- price chỉ là ĐƠN GIÁ của MỘT sản phẩm, chỉ lấy khi hội thoại ghi rõ giá ngay trên cùng dòng sản phẩm hoặc gắn trực tiếp với tên sản phẩm.
+- TUYỆT ĐỐI KHÔNG lấy tổng tiền đơn, tổng COD, số tiền thanh toán, hoặc tự chia tổng COD cho số lượng để suy ra price.
+- Nếu chỉ có tổng đơn/COD mà không có đơn giá rõ ràng, để price = 0; extension sẽ dùng giá CATALOG.
+- Ví dụ: "3 x Sản phẩm A - 73.000 VND" => quantity=3, price=73000; "Tổng: 219.000 VND" KHÔNG phải price.
+Quy tắc tiền khác: '219K' hoặc '219k' = 219000; bỏ dấu phẩy/chấm phân cách; 'freeship'/'FREESHIP' => shippingFee = 0.
 Nếu không chắc, để '' hoặc 0. products = [] nếu không rõ.${catalogText}
 
 HỘI THOẠI (cũ -> mới):
@@ -846,11 +853,19 @@ function mapProductsToCatalog(products, catalogList, preserveExtractedPrices = f
           && catalogPrice > 0 && extractedPrice > 0 && extractedPrice !== catalogPrice) {
         blog(`DIAG giá "${best.name}": dùng GIÁ CATALOG ${catalogPrice} (bỏ giá trích ${extractedPrice}).`);
       }
-      // Giữ riêng giá ghi rõ trong nội dung đơn nếu khác catalog.
-      // Giá thường vẫn dùng catalog; content script chỉ ghi đè ô Giá khi overridePrice > 0.
-      const overridePrice = extractedPrice > 0 && catalogPrice > 0 && extractedPrice !== catalogPrice
-        ? extractedPrice
-        : 0;
+      // Chỉ cho phép ghi đè giá khi có bằng chứng giá đơn được ghi RÕ trong
+      // dòng sản phẩm (parser regex đánh dấu priceExplicit), hoặc dữ liệu manual-test.
+      // Giá do DeepSeek suy luận từ tổng COD/tổng tiền không được xem là giá đơn.
+      const hasExplicitOrderPrice = p.priceExplicit === true || preserveExtractedPrices;
+      const overridePrice = hasExplicitOrderPrice
+        && extractedPrice > 0
+        && catalogPrice > 0
+        && extractedPrice !== catalogPrice
+          ? extractedPrice
+          : 0;
+      if (extractedPrice > 0 && extractedPrice !== catalogPrice && !hasExplicitOrderPrice) {
+        blog(`DIAG bỏ qua giá AI chưa xác minh "${best.name}": AI=${extractedPrice}, catalog=${catalogPrice}; giữ giá catalog.`);
+      }
       if (overridePrice) {
         blog(`DIAG giá khác catalog cho "${best.name}": catalog=${catalogPrice}, giá đơn=${overridePrice}; sẽ cập nhật ô Giá sau khi thêm sản phẩm.`);
       }
