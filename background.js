@@ -2842,9 +2842,15 @@ async function runScanCycle() {
       ].filter(Boolean).join("\n");
       const fallbackUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`);
       const fallbackButtons = [];
-      // Có SĐT và đã cấu hình Worker thì hiện nút Lên đơn như thông báo đơn chuẩn.
-      if (contact.phone && cfg.workerUrl) {
+      // V2 phải gửi CID qua Worker; chỉ V1 mới dùng SĐT.
+      const fallbackCid = String(v2ConversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/)?.[1] || "";
+      const fallbackIsV2 = v2ConversationUrl === "__V2_NO_CID__" || !!fallbackCid;
+      if (cfg.workerUrl && fallbackCid) {
+        fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fillcid:${fallbackCid}` }]);
+      } else if (cfg.workerUrl && !fallbackIsV2 && contact.phone) {
         fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${contact.phone}` }]);
+      } else if (fallbackIsV2) {
+        blog(`Fallback: ẩn nút Lên đơn vì hội thoại V2 không có CID hợp lệ cho "${conv.name}".`);
       }
       if (fallbackUrl) fallbackButtons.push([{ text: "💬 Mở hội thoại", url: fallbackUrl }]);
       await processScanNotification({
@@ -2886,13 +2892,14 @@ async function runScanCycle() {
     // Gửi ĐẦY ĐỦ: trường đã parse + nguyên văn khối đơn + link lên đơn.
     const text = formatOrderForTelegram(parsed, conv.name, orderText, orderUrl);
 
-    // Nút callback Telegram giữ nguyên giao thức Worker hiện tại (fill:SĐT).
-    // Tự động lên đơn tại máy extension được kích hoạt riêng bằng CID ở processScanNotification.
+    // V2 truyền CID composite qua Worker; V1 tiếp tục dùng SĐT.
     const buttons = [];
-    if (phone && cfg.workerUrl) {
+    if (cfg.workerUrl && conversationCid) {
+      buttons.push([{ text: "🧾 Lên đơn", callback_data: `fillcid:${conversationCid}` }]);
+    } else if (cfg.workerUrl && !isV2Conversation && phone) {
       buttons.push([{ text: "🧾 Lên đơn", callback_data: `fill:${phone}` }]);
     } else {
-      blog(`Nút Lên đơn bị ẩn: phone=${phone || "(trống)"}, workerUrl=${cfg.workerUrl ? "có" : "chưa cấu hình"}.`);
+      blog(`Nút Lên đơn bị ẩn: V2=${isV2Conversation}; CID=${conversationCid || "(trống)"}; phone=${phone || "(trống)"}; workerUrl=${cfg.workerUrl ? "có" : "chưa cấu hình"}.`);
     }
     if (orderUrl) buttons.push([{ text: "💬 Mở hội thoại", url: orderUrl }]);
     const markup = buttons.length ? { inline_keyboard: buttons } : undefined;
@@ -3408,21 +3415,28 @@ async function processPushedCommand(cmd) {
       if (!cfg.autoFillEnabled) {
         await reportRemoteStatus(cmd.chatId, null, "⛔ Chưa bật nhận lệnh lên đơn. Gửi /orders_on để bật.");
       } else {
-        blog(`Push: nhận lệnh ${cmd.id} cho ${cmd.phone}.`);
+        const cid = String(cmd.cid || "").trim();
+        const phone = String(cmd.phone || "").trim();
+        const useCid = /^\\d+_\\d+$/.test(cid);
+        if (!useCid && !/^\\d{6,15}$/.test(phone)) {
+          throw new Error("Lệnh lên đơn thiếu CID V2 hợp lệ hoặc SĐT V1 hợp lệ.");
+        }
+        const targetLabel = useCid ? ("CID " + cid) : ("SĐT " + phone);
+        blog(`Push: nhận lệnh ${cmd.id} cho ${targetLabel}.`);
         try {
-          const result = await fillOrderByPhone(cmd.phone);
+          const result = useCid ? await fillOrderByCID(cid) : await fillOrderByPhone(phone);
           const failed = result?.ok === false || result?.filled === false || !!result?.error;
           const message = failed
-            ? "⚠️ Lệnh lên đơn chưa hoàn tất cho " + cmd.phone + ": " + String(result?.error || result?.summary || "Không điền được form.").slice(0, 500) + " Tab Vpage được giữ lại để kiểm tra."
+            ? "⚠️ Lệnh lên đơn chưa hoàn tất (" + targetLabel + "): " + String(result?.error || result?.summary || "Không điền được form.").slice(0, 500) + " Tab Vpage được giữ lại để kiểm tra."
             : result?.submitted
-              ? "✅ Đã điền và gửi đơn cho SĐT " + cmd.phone + "."
+              ? "✅ Đã điền và gửi đơn (" + targetLabel + ")."
               : result?.reviewRequired
-                ? "📝 Đã điền form cho SĐT " + cmd.phone + " nhưng CHƯA lưu. Tab Vpage được giữ lại để kiểm tra."
-                : "✅ Extension đã xử lý lệnh lên đơn cho SĐT " + cmd.phone + ". Hãy kiểm tra tab Vpage nếu cần.";
+                ? "📝 Đã điền form (" + targetLabel + ") nhưng CHƯA lưu. Tab Vpage được giữ lại để kiểm tra."
+                : "✅ Extension đã xử lý lệnh lên đơn (" + targetLabel + "). Hãy kiểm tra tab Vpage nếu cần.";
           await reportRemoteStatus(cmd.chatId, null, message);
         } catch (e) {
-          blog(`Push: lên đơn lỗi cho ${cmd.phone}: ${e.message}`);
-          await reportRemoteStatus(cmd.chatId, null, "❌ Lên đơn lỗi cho " + cmd.phone + ": " + e.message.slice(0, 500));
+          blog(`Push: lên đơn lỗi cho ${targetLabel}: ${e.message}`);
+          await reportRemoteStatus(cmd.chatId, null, "❌ Lên đơn lỗi (" + targetLabel + "): " + e.message.slice(0, 500));
         }
       }
     } else {
