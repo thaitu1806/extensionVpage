@@ -1148,7 +1148,7 @@ function getRegionDisplayText(input) {
 // Danh sách tỉnh/thành dùng để phân biệt đúng địa chỉ 2 cấp sau 01/07/2025
 // với tên thành phố/quận cũ (ví dụ Thủ Đức không phải tỉnh/thành).
 function normalizeProvinceKey(value) {
-  return String(value || "")
+  let key = String(value || "")
     .toLowerCase()
     .replace(/đ/g, "d")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -1157,6 +1157,21 @@ function normalizeProvinceKey(value) {
     .replace(/^(tinh|thanh pho|tp\.?)[ \t]+/i, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  // Alias tỉnh/thành chuẩn hóa về cùng khóa masterdata Nhanh.vn.
+  const aliases = {
+    "thua thien hue": "hue",
+    "hue": "hue",
+    "hcm": "ho chi minh",
+    "tphcm": "ho chi minh",
+    "sai gon": "ho chi minh",
+    "ho chi minh": "ho chi minh",
+    "hn": "ha noi",
+    "ha noi": "ha noi",
+    "dn": "da nang",
+    "da nang": "da nang"
+  };
+  return aliases[key] || key;
 }
 
 const PRE_MERGER_PROVINCES = [
@@ -1201,10 +1216,12 @@ function hasExpectedRegionLevel(input, expectedRegion) {
 
   if (valid && expectedParts.length === 2) {
     valid = isKnownPostMergerProvince(expectedParts[1])
-      && isKnownPostMergerProvince(displayParts[1]);
+      && isKnownPostMergerProvince(displayParts[1])
+      && sameProvinceName(expectedParts[1], displayParts[1]);
   } else if (valid && expectedParts.length === 3) {
     valid = isKnownPreMergerProvince(expectedParts[2])
-      && isKnownPreMergerProvince(displayParts[2]);
+      && isKnownPreMergerProvince(displayParts[2])
+      && sameProvinceName(expectedParts[2], displayParts[2]);
   }
 
   if (!valid) {
@@ -1250,13 +1267,19 @@ function sameRegionSelection(currentText, targetText) {
   // Địa chỉ đầu vào đôi khi chỉ có Phường + Quận/Huyện, trong khi Nhanh.vn
   // hiển thị kết quả đầy đủ 3 cấp (Phường, Quận, Hồ Chí Minh). Khi đó chỉ
   // xác minh các cấp mà dữ liệu đầu vào thực sự cung cấp.
+  const middleIsProvinceAlias = targetParts.length === 3
+    && sameProvinceName(targetParts[1], targetParts[2]);
   const targetHasDistrict = targetParts.length >= 2
-    && /^(quận|huyện|thị xã|thị trấn|thành phố)\\s+/i.test(targetParts[1]);
+    && /^(quận|huyện|thị xã|thị trấn)\\\\s+/i.test(targetParts[1])
+    && !middleIsProvinceAlias;
 
   for (let i = 0; i < targetParts.length; i++) {
+    // Một số dữ liệu đặt alias tỉnh/thành vào vị trí cấp giữa:
+    // "Phường X, Thành phố Huế, Thừa Thiên Huế". Không coi alias này là quận.
+    if (i === 1 && middleIsProvinceAlias) continue;
     const isProvince = i === targetParts.length - 1 && !targetHasDistrict;
     if (isProvince) {
-      if (!sameProvinceName(currentParts[i], targetParts[i])) return false;
+      if (!sameProvinceName(currentParts[currentParts.length - 1], targetParts[i])) return false;
     } else if (!sameAdminUnit(currentParts[i], targetParts[i])) {
       return false;
     }
@@ -1644,23 +1667,15 @@ function stripRegionType(s) {
 //  "HN"/"Hà Nội" -> "ha noi"; "Đà Nẵng"/"ĐN" -> "da nang"
 // Nhờ đó "hcm" (đích) khớp được gợi ý "Hồ Chí Minh" của nhanh.vn.
 function canonicalProvince(s) {
-  let p = stripRegionType(s);                 // đã normalize + bỏ "tỉnh/tp..."
-  p = p.replace(/\btp\b\.?\s*/g, "").trim();  // bỏ "tp" còn sót (vd "tp hcm")
-  // Bí danh HCM.
-  if (/\b(hcm|tphcm|sg|sai gon|ho chi minh)\b/.test(p) || p === "hcm") return "ho chi minh";
-  // Bí danh Hà Nội.
-  if (/\b(hn|ha noi)\b/.test(p) || p === "hn") return "ha noi";
-  // Bí danh Đà Nẵng.
-  if (/\b(dn|da nang)\b/.test(p)) return "da nang";
-  return p;
+  // Dùng cùng bộ alias với danh sách masterdata; không so khớp kiểu contains.
+  return normalizeProvinceKey(stripRegionType(s));
 }
 
-// Hai tên tỉnh có cùng chỉ 1 tỉnh không? (so sau khi canonical + chứa lẫn nhau).
+// Chỉ coi là cùng tỉnh/thành khi cùng khóa chuẩn hoặc alias đã khai báo.
 function sameProvinceName(a, b) {
   const ca = canonicalProvince(a);
   const cb = canonicalProvince(b);
-  if (!ca || !cb) return false;
-  return ca === cb || ca.includes(cb) || cb.includes(ca);
+  return !!ca && !!cb && ca === cb;
 }
 
 // Chuẩn hóa QUẬN/HUYỆN để so khớp chính xác, kể cả dạng SỐ:
