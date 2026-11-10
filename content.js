@@ -1270,7 +1270,7 @@ function sameRegionSelection(currentText, targetText) {
   const middleIsProvinceAlias = targetParts.length === 3
     && sameProvinceName(targetParts[1], targetParts[2]);
   const targetHasDistrict = targetParts.length >= 2
-    && /^(quận|huyện|thị xã|thị trấn)\\\\s+/i.test(targetParts[1])
+    && /^(quận|huyện|thị xã|thị trấn)[ ]+/i.test(targetParts[1])
     && !middleIsProvinceAlias;
 
   for (let i = 0; i < targetParts.length; i++) {
