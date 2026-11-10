@@ -342,7 +342,7 @@ function parseProductLines(block) {
     // Ưu tiên bắt giá ghi trong ngoặc ở bất kỳ vị trí nào của phần sản phẩm,
     // phòng trường hợp văn bản dán có ký tự/dấu câu dư ở cuối.
     const priceM = rest.match(/\(\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*\)/)
-      || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})(?=\s|[;,]|$)/);
+      || rest.match(/\s[-–]\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,})(?:\s*(?:VND|VNĐ|đ))?(?=\s|[;,]|$)/i);
     let priceExplicit = false;
     if (priceM) {
       price = toNumber(priceM[1]);
