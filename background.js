@@ -331,11 +331,25 @@ function parseProductLines(block) {
     (_, flavor, qty) => "\n" + qty + " x Cơm cháy Gạo Thường - " + flavor.replace(/\s+/g, " ").trim()
   );
 
-  // Mỗi dòng sản phẩm không ghi số lượng mặc định là 1 x.
+  // Chuẩn hóa số lượng dạng "N túi ..." và combo dạng "N Combo M túi ...".
+  // Ví dụ: "3 Combo 3 túi Tên SP (9 túi)" -> "9 x Tên SP".
   normalizedBlock = normalizedBlock.split(/\r?\n/).map((line) => {
     const value = line.trim();
-    if (!value || /^\+?\s*\d+\s*[x*]\s*\S/i.test(value)) return line;
-    if (/^combo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(value)) return line;
+    if (!value) return line;
+    if (/^\+?\s*\d+\s*[x*]\s*\S/i.test(value)) return line;
+
+    const comboMatch = value.match(/^(\d+)\s*combo\s*(\d+)\s*(túi|goi|gói|hộp|hop|phần|phan)\s+(.+)$/i);
+    if (comboMatch) {
+      const totalQty = parseInt(comboMatch[1], 10) * parseInt(comboMatch[2], 10);
+      let productText = comboMatch[4].trim();
+      productText = productText.replace(/\s*\(\s*\d+\s*(?:túi|goi|gói|hộp|hop|phần|phan)\s*\)\s*$/i, "").trim();
+      return totalQty + " x " + productText;
+    }
+
+    const packMatch = value.match(/^(\d+)\s*(túi|goi|gói|hộp|hop|phần|phan)\s+(.+)$/i);
+    if (packMatch) return parseInt(packMatch[1], 10) + " x " + packMatch[3].trim();
+
+    // Mỗi dòng sản phẩm không ghi số lượng mặc định là 1 x.
     return "1 x " + value;
   }).join("\n");
 
