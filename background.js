@@ -12,6 +12,24 @@ function normalizeTrackingText(value = "") {
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ").trim();
 }
+
+// Nhận diện template đơn Business Agent, kể cả dạng mỗi dòng sản phẩm không ghi SL
+// mà có giá ở cuối: "Tên sản phẩm - 73000 VND" (mặc định 1 x mỗi dòng).
+function isOrderTemplateMessage(value) {
+  const text = String(value || "");
+  if (!/(Số điện thoại|Điện thoại)\s*:/i.test(text) ||
+      !/Sản ?phẩm\s*:/i.test(text)) return false;
+
+  if ((/XÁC NHẬN ĐƠN HÀNG/i.test(text) || /Mã đơn hàng/i.test(text))) return true;
+  if (/\d+\s*x\s*\S/i.test(text) ||
+      /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(text)) return true;
+
+  // Dòng sản phẩm kèm giá VND/VNĐ/đ; không yêu cầu số lượng.
+  const productBlock = text.split(/Sản ?phẩm\s*:/i).slice(1).join("Sản phẩm:");
+  const beforeNextField = productBlock.split(/\n\s*(?:Phí vận chuyển|Chiết khấu|Tổng|Ghi chú|Hình thức vận chuyển)\s*:/i)[0];
+  return /(?:^|\n)\s*[^\n]{3,}?\s[-–]\s*\d{1,3}(?:[.,]\d{3})+\s*(?:VND|VNĐ|đ)\b/im.test(beforeNextField)
+    || /(?:^|\n)\s*[^\n]{3,}?\s[-–]\s*\d{4,}\s*(?:VND|VNĐ|đ)\b/im.test(beforeNextField);
+}
 function hasRecentTrackingInbox(messages) {
   return (Array.isArray(messages) ? messages : []).slice(-3)
     .some((message) => normalizeTrackingText(typeof message === "string" ? message : (message?.text || "")).includes("theo doi van chuyen"));
@@ -2718,10 +2736,7 @@ async function runScanCycle() {
       const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
       const trackingWords = ["theo doi van chuyen", "ma don hang"].filter(x => normalized.includes(x));
       const isTrackingDebug = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
-      const isTemplateDebug = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-        || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-        || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\s*:/i.test(rawText)
-          && (/\d+\s*x\s*\S/i.test(rawText) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(rawText)));
+      const isTemplateDebug = isOrderTemplateMessage(rawText);
       blog(`[SCAN DEBUG] #${index + 1} role=${m?.role || "?"} len=${rawText.length} tracking=${isTrackingDebug} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplateDebug} text="${rawText.replace(/\s+/g, " ").slice(0, 260)}"`);
     });
     if (!recentMessages.length) blog(`[SCAN DEBUG] "${conv.name}" không nhận được tin nhắn nào từ content.js.`);
@@ -2803,12 +2818,7 @@ async function runScanCycle() {
         break;
       }
 
-      const isOrderTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(messageText) && /(Số điện thoại|Điện thoại)/i.test(messageText))
-        || (/Mã đơn hàng/i.test(messageText) && /(Số điện thoại|Điện thoại)/i.test(messageText))
-        || (/(Số điện thoại|Điện thoại)/i.test(messageText)
-          && /Sản ?phẩm\s*:/i.test(messageText)
-          && (/\d+\s*x\s*\S/i.test(messageText)
-            || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(messageText)));
+      const isOrderTemplate = isOrderTemplateMessage(messageText);
 
       if (isOrderTemplate) {
         latestOrderSignal = "template";
@@ -2829,10 +2839,7 @@ async function runScanCycle() {
     const orderText = latestOrderSignal === "template"
       ? String(recentMessages.slice().reverse().find((m) =>
           m?.role === "shop" && (
-            (/XÁC NHẬN ĐƠN HÀNG/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
-            || (/Mã đơn hàng/i.test(m.text || "") && /(Số điện thoại|Điện thoại)/i.test(m.text || ""))
-            || (/(Số điện thoại|Điện thoại)/i.test(m.text || "") && /Sản ?phẩm\s*:/i.test(m.text || "")
-              && (/\d+\s*x\s*\S/i.test(m.text || "") || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(m.text || "")))
+            isOrderTemplateMessage(m.text || "")
           )
         )?.text || "")
       : "";
