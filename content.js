@@ -429,6 +429,7 @@ async function clickSaveButton(timeout = 45000) {
 }
 
 async function fillForm(data) {
+  window.__dsOrderReadyToSave = false;
   log("FILL_FORM nhận dữ liệu:", JSON.stringify(data));
 
   // Chỉ xử lý ở frame tạo đơn. Trang chat sẽ bị bỏ qua để không điền nhầm.
@@ -615,6 +616,20 @@ async function fillForm(data) {
     productInfo = ` | SP thêm: ${added}/${data.products.length}`;
     log(`Kết quả thêm sản phẩm: ${added}/${data.products.length}`);
   }
+
+  if (Array.isArray(data.products) && data.products.length) {
+    const productCheck = verifyRequestedProducts(data.products);
+    if (!productCheck.ok) {
+      window.__dsOrderReadyToSave = false;
+      log(`CHẶN LƯU ĐƠN: ${productCheck.reason}`);
+      throw new Error(`Dừng lưu để tránh tạo đơn sai: ${productCheck.reason}`);
+    }
+    log("VERIFY sản phẩm thành công:", productCheck.reason);
+  } else {
+    window.__dsOrderReadyToSave = false;
+    throw new Error("Dừng lưu: dữ liệu không có danh sách sản phẩm hợp lệ.");
+  }
+  window.__dsOrderReadyToSave = true;
 
   // THỨ TỰ webhook: Sản phẩm -> Mã KM -> Chiết khấu -> chờ 4s
   // -> Phí ship -> chờ 4s -> chọn trạng thái và tự động Lưu.
@@ -1972,6 +1987,48 @@ function countProductRows() {
   return document.querySelectorAll("tr.productItem").length;
 }
 
+// Đối chiếu số lượng và đơn giá thực tế trên form với dữ liệu đơn trước khi cho phép lưu.
+function verifyRequestedProducts(products) {
+  if (!Array.isArray(products) || !products.length) {
+    return { ok: false, reason: "Không có sản phẩm để đối chiếu." };
+  }
+  const expected = new Map();
+  for (const p of products) {
+    const name = String(p.name || "").trim();
+    const key = normalize(name);
+    if (!key) return { ok: false, reason: "Có sản phẩm thiếu tên." };
+    const qty = Math.max(1, Number(p.quantity) || 1);
+    const price = Number(p.overridePrice) > 0 ? Number(p.overridePrice) : Number(p.price) || 0;
+    const old = expected.get(key);
+    if (old && old.price > 0 && price > 0 && old.price !== price) {
+      return { ok: false, reason: `Một sản phẩm có hai đơn giá khác nhau: ${name}.` };
+    }
+    expected.set(key, {
+      name,
+      quantity: (old?.quantity || 0) + qty,
+      price: price || old?.price || 0
+    });
+  }
+
+  for (const item of expected.values()) {
+    const row = findProductRow(item.name);
+    if (!row) return { ok: false, reason: `Không tìm thấy dòng sản phẩm "${item.name}" trên form.` };
+    const qtyInput = getRowQtyInput(row);
+    const tds = Array.from(row.children).filter((el) => el.tagName === "TD");
+    const priceInput = tds[2]?.querySelector("input[autonumeric], input[appautonumericwrapper], input.text-end");
+    const actualQty = qtyInput ? readNumber(qtyInput.value) : NaN;
+    const actualPrice = priceInput ? readNumber(priceInput.value) : NaN;
+    log(`VERIFY sản phẩm "${item.name}": SL yêu cầu=${item.quantity}, thực tế=${actualQty}; giá yêu cầu=${item.price || "(catalog/form)"}, thực tế=${actualPrice}`);
+    if (!Number.isFinite(actualQty) || actualQty !== item.quantity) {
+      return { ok: false, reason: `Sai số lượng "${item.name}": yêu cầu ${item.quantity}, form đang là ${actualQty}.` };
+    }
+    if (item.price > 0 && (!Number.isFinite(actualPrice) || actualPrice !== item.price)) {
+      return { ok: false, reason: `Sai đơn giá "${item.name}": yêu cầu ${item.price}, form đang là ${actualPrice}.` };
+    }
+  }
+  return { ok: true, reason: "Số lượng và đơn giá sản phẩm khớp dữ liệu đơn." };
+}
+
 // Chờ số dòng sản phẩm > baseline (tức là đã thêm được 1 dòng mới).
 async function waitRowAdded(baseline, timeout = 2500) {
   const start = Date.now();
@@ -1984,53 +2041,56 @@ async function waitRowAdded(baseline, timeout = 2500) {
 
 // Thử nhiều cách chọn 1 gợi ý; trả true khi bảng tăng thêm dòng.
 async function chooseSuggestion(input, targetName, rowsBefore) {
-  // Cách 1: click phần tử con của gợi ý khớp nhất.
   const best = bestSuggestionEl(targetName);
-  if (best && (!suggestionMatchesVariant(targetName, suggestionName(best))
+  if (best && (!suggestionMatchesType(targetName, suggestionName(best))
+      || !suggestionMatchesVariant(targetName, suggestionName(best))
       || !suggestionMatchesRiceType(targetName, suggestionName(best))
       || !suggestionMatchesProductIdentity(targetName, suggestionName(best)))) {
     log(`chooseSuggestion: từ chối gợi ý không khớp loại/vị "${suggestionName(best)}" cho "${targetName}"`);
     return false;
   }
+
+  const qtyBefore = currentQtyOf(targetName);
+  const waitSelected = async (timeout = 3000) => {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      if (countProductRows() > rowsBefore || currentQtyOf(targetName) > qtyBefore) return true;
+      await sleep(120);
+    }
+    return countProductRows() > rowsBefore || currentQtyOf(targetName) > qtyBefore;
+  };
+
   if (best) {
-    log(`chooseSuggestion[click]: "${suggestionName(best)}"`);
-    const clickTargets = [
-      best.querySelector("p.text-wrap"),
-      best.querySelector(".flex-1"),
-      best.querySelector(".d-flex"),
-      best.firstElementChild,
-      best
-    ].filter(Boolean);
-    for (const t of clickTargets) simulateClick(t);
-    if (await waitRowAdded(rowsBefore, 1800)) return true;
+    // Chỉ click đúng MỘT lần vào một node duy nhất. Không click lần lượt
+    // các node con/cha vì click bubbling có thể thêm cùng sản phẩm nhiều lần.
+    const target = best.querySelector("p.text-wrap") || best;
+    log(`chooseSuggestion[click-once]: "${suggestionName(best)}"; SL trước=${qtyBefore}`);
+    simulateClick(target);
+    const selected = await waitSelected();
+    log(`chooseSuggestion: kết quả click một lần=${selected}; SL sau=${currentQtyOf(targetName)}; số dòng=${countProductRows()}`);
+    return selected;
   }
 
-  // Cách 2: dùng phím mũi tên xuống tới mục khớp rồi Enter.
-  log("chooseSuggestion[keyboard]: ArrowDown + Enter");
+  // Chỉ dùng bàn phím khi không tìm thấy gợi ý cụ thể để click.
+  const items = getSuggestionItems();
+  if (items.length === 1) {
+    const candidate = suggestionName(items[0]);
+    if (!suggestionMatchesType(targetName, candidate)
+        || !suggestionMatchesVariant(targetName, candidate)
+        || !suggestionMatchesRiceType(targetName, candidate)
+        || !suggestionMatchesProductIdentity(targetName, candidate)) {
+      log(`chooseSuggestion[single]: BỎ QUA mục "${candidate}" vì LỆCH LOẠI với "${targetName}".`);
+      return false;
+    }
+  }
+  log("chooseSuggestion[keyboard-once]: ArrowDown + Enter");
   const idx = bestSuggestionIndex(targetName);
   for (let i = 0; i <= idx; i++) {
     pressKey(input, "ArrowDown", 40);
     await sleep(80);
   }
   pressEnter(input);
-  if (await waitRowAdded(rowsBefore, 1800)) return true;
-
-  // Cách 3: click thẳng mục KHỚP NHẤT nếu chỉ còn 1 gợi ý VÀ không lệch loại.
-  const items = getSuggestionItems();
-  if (items.length === 1) {
-    if (suggestionMatchesType(targetName, suggestionName(items[0]))
-        && suggestionMatchesVariant(targetName, suggestionName(items[0]))
-        && suggestionMatchesRiceType(targetName, suggestionName(items[0]))
-        && suggestionMatchesProductIdentity(targetName, suggestionName(items[0]))) {
-      log("chooseSuggestion[single]: click mục duy nhất (cùng loại).");
-      simulateClick(items[0]);
-      if (await waitRowAdded(rowsBefore, 1800)) return true;
-    } else {
-      log(`chooseSuggestion[single]: BỎ QUA mục "${suggestionName(items[0])}" vì LỆCH LOẠI với "${targetName}".`);
-    }
-  }
-
-  return false;
+  return await waitSelected();
 }
 
 // So khớp biến thể vị cay. Đây là thuộc tính bắt buộc, không được coi
@@ -2316,13 +2376,15 @@ function suggestionName(item) {
 
 // Phát đầy đủ chuỗi sự kiện chuột lên 1 phần tử để Angular/ngb nhận click.
 function simulateClick(el) {
+  if (!el) return;
   const opts = { bubbles: true, cancelable: true, view: window };
   try { el.dispatchEvent(new PointerEvent("pointerdown", opts)); } catch (_) {}
   el.dispatchEvent(new MouseEvent("mousedown", opts));
   try { el.dispatchEvent(new PointerEvent("pointerup", opts)); } catch (_) {}
   el.dispatchEvent(new MouseEvent("mouseup", opts));
+  // Chỉ phát MỘT click event. Không gọi thêm el.click() vì sẽ kích hoạt
+  // handler lần thứ hai và có thể làm số lượng sản phẩm tăng gấp đôi.
   el.dispatchEvent(new MouseEvent("click", opts));
-  if (typeof el.click === "function") el.click();
 }
 
 // Lấy ô SỐ LƯỢNG của một dòng sản phẩm.
@@ -2574,6 +2636,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "SAVE_VERIFIED_ORDER") {
     if (!isOrderFrame() || !hasOrderForm()) {
       sendResponse({ saved: false, info: "Không phải frame form đơn hàng." });
+      return false;
+    }
+    if (window.__dsOrderReadyToSave !== true) {
+      log("CHẶN SAVE_VERIFIED_ORDER: chưa xác minh số lượng/đơn giá sản phẩm.");
+      sendResponse({ saved: false, info: "Chưa xác minh sản phẩm; không cho phép lưu." });
       return false;
     }
     clickSaveButton(45000).then((saved) => sendResponse({ saved }))
