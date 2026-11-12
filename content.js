@@ -1920,11 +1920,15 @@ async function increaseQtyByReAdd(input, fullName, targetQty, search) {
     if (!ok) { log("increaseQtyByReAdd: không ra gợi ý, dừng."); break; }
 
     const before = currentQtyOf(fullName);
-    // Chọn lại gợi ý (không cần bảng tăng dòng vì trùng -> chỉ tăng SL).
+    // Chọn đúng một lần; click nhiều node con/cha sẽ làm Nhanh cộng SL nhiều lần.
     const best = bestSuggestionEl(fullName);
     if (best) {
-      const clickTargets = [best.querySelector("p.text-wrap"), best.querySelector(".flex-1"), best.querySelector(".d-flex"), best].filter(Boolean);
-      for (const t of clickTargets) simulateClick(t);
+      const target = best.querySelector("p.text-wrap") || best;
+      log(`increaseQtyByReAdd: click-once "${suggestionName(best)}"; SL trước=${before}`);
+      simulateClick(target);
+    } else {
+      log("increaseQtyByReAdd: không tìm thấy gợi ý phù hợp, dừng để tránh chọn nhầm.");
+      break;
     }
     // Chờ SL tăng.
     const okInc = await waitQtyIncrease(fullName, before, 2500);
