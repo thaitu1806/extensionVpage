@@ -2700,9 +2700,40 @@ async function runScanCycle() {
       blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: 5).`);
     }
 
+    // V2 đôi khi render box nhưng .conv-time rỗng (DOM chưa đồng bộ).
+    // Chủ động refresh ngay trong lượt quét này thay vì chờ 5 snapshot không đổi.
+    const hasUnparsedActivity = candidates.some((conv) => !Number(conv.activityAt));
+    if (hasUnparsedActivity) {
+      const missingNames = candidates.filter((conv) => !Number(conv.activityAt)).map((conv) => conv.name);
+      blog(`Phát hiện ${missingNames.length} box V2 không đọc được thời gian (${missingNames.join(", ")}); refresh Vpage để đọc lại.`);
+      try {
+        await chrome.tabs.reload(tab.id);
+        const loaded = await waitTabComplete(tab.id, 30000);
+        if (loaded) {
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
+          if (refreshedCandidates.length) {
+            candidates = refreshedCandidates;
+            blog(`Refresh do thiếu thời gian thành công: đọc lại được ${candidates.length} box.`);
+          } else {
+            blog("Refresh do thiếu thời gian xong nhưng danh sách rỗng; giữ danh sách trước refresh.");
+          }
+        } else {
+          blog("Refresh do thiếu thời gian quá 30 giây; giữ danh sách trước refresh.");
+        }
+      } catch (refreshError) {
+        blog("Refresh do thiếu thời gian lỗi:", refreshError?.message || refreshError);
+      }
+    }
+
+    const stillUnparsed = candidates.filter((conv) => !Number(conv.activityAt));
+    if (stillUnparsed.length) {
+      blog(`Sau refresh vẫn còn ${stillUnparsed.length} box thiếu thời gian: ${stillUnparsed.map((conv) => conv.name).join(", ")}. Sẽ đưa các box này vào xử lý để không bỏ sót.`);
+    }
+
     const overlapMs = 2 * 60 * 1000;
     conversations = candidates.filter((conv) =>
-      Number(conv.activityAt) > 0 && Number(conv.activityAt) >= checkpointAt - overlapMs
+      !Number(conv.activityAt) || Number(conv.activityAt) >= checkpointAt - overlapMs
     );
     blog(`Incremental scan: mốc=${checkpointAt ? new Date(checkpointAt).toLocaleString("vi-VN") : "chưa có"}, cửa sổ đệm 2 phút, đọc ${candidates.length} box, còn ${conversations.length} box cần kiểm tra.`);
     blog("Incremental candidates:", conversations.map((x) => `${x.name} (${x.timeText})`).join(" | ") || "(không có)");
