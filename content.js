@@ -471,7 +471,10 @@ async function fillForm(data) {
 
   const done = [];
 
-  if (data.name) {
+  if (data.preserveCustomerFields) {
+    log('-> GIỮ nguyên tên, SĐT và toàn bộ địa chỉ đang được Nhanh.vn nạp vì template ghi SĐT: cũ và Địa chỉ: cũ.');
+  }
+  if (!data.preserveCustomerFields && data.name) {
     const el = findByPlaceholder("Tên");
     log("Tìm ô 'Tên':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
@@ -495,7 +498,7 @@ async function fillForm(data) {
       }
     }
   }
-  if (data.phone) {
+  if (!data.preserveCustomerFields && data.phone) {
     const el = findByPlaceholder("Điện thoại", "Số điện thoại", "SĐT");
     log("Tìm ô 'Điện thoại':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
@@ -512,7 +515,7 @@ async function fillForm(data) {
     }
   }
   // Chỉ tra cứu/chọn lại địa giới khi khác dữ liệu đang có.
-  if (data.addressRegion || data.addressRegion2 || data.address) {
+  if (!data.preserveCustomerFields && (data.addressRegion || data.addressRegion2 || data.address)) {
     const regionInput = findAddressRegionInput();
     const currentRegion = getRegionDisplayText(regionInput);
     if (data.addressRegion && sameRegionSelection(currentRegion, data.addressRegion)) {
@@ -585,7 +588,7 @@ async function fillForm(data) {
   }
 
   // Chỉ cập nhật địa chỉ chi tiết khi nội dung thực sự khác.
-  if (data.address) {
+  if (!data.preserveCustomerFields && data.address) {
     const el = findAddressDetailInput();
     log("Tìm ô 'Địa chỉ chi tiết':", el ? "OK" : "KHÔNG THẤY");
     if (el) {
