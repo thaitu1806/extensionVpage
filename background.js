@@ -505,8 +505,12 @@ function parseOrderConfirmation(text, preferLastFields = false) {
 
   const name = grab("Tên người nhận:", STOPS);
   const phoneRaw = grab("Số điện thoại:", STOPS);
-  const phone = (phoneRaw.match(/\d[\d\s.]{7,}/) || [""])[0].replace(/[^\d]/g, "");
-  let fullAddress = cleanAddress(grab("Địa chỉ:", STOPS));
+  const addressRaw = grab("Địa chỉ:", STOPS);
+  // Business Agent dùng "cũ" để yêu cầu giữ nguyên hồ sơ khách đã được Nhanh.vn nạp.
+  // Chỉ bật chế độ này khi CẢ SĐT và địa chỉ đều ghi đúng "cũ".
+  const preserveCustomerFields = /^cũ$/i.test(phoneRaw.trim()) && /^cũ$/i.test(addressRaw.trim());
+  const phone = preserveCustomerFields ? "" : (phoneRaw.match(/\d[\d\s.]{7,}/) || [""])[0].replace(/[^\d]/g, "");
+  let fullAddress = cleanAddress(preserveCustomerFields ? "" : addressRaw);
   // Bỏ SĐT bị lặp (có thể ở đầu hoặc giữa).
   if (phone) {
     fullAddress = fullAddress.replace(new RegExp(phone, "g"), " ");
@@ -548,6 +552,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
     phone,
     address,
     addressRegion,
+    preserveCustomerFields,
     products,
     shippingFee,
     discount,
