@@ -56,8 +56,8 @@ async function handleTelegram(request, env) {
   const chatId = cq.message && cq.message.chat && cq.message.chat.id;
   if (!chatIdAllowed(env, chatId)) { await answerCallback(env, cq.id, "Không có quyền."); return json({ ok: true }); }
   const data = String(cq.data || "");
-  const cidMatch = data.match(/^fillcid:(\\d+_\\d+)$/);
-  const phoneMatch = data.match(/^fill:(\\d{6,15})$/);
+   const cidMatch = data.match(/^fillcid:(\d+_\d+)$/);
+   const phoneMatch = data.match(/^fill:(\d{6,15})$/);
   if (!cidMatch && !phoneMatch) { await answerCallback(env, cq.id, "Lệnh không hợp lệ."); return json({ ok: true }); }
   const command = cidMatch
    ? { id: Date.now() + "_" + crypto.randomUUID().slice(0, 8), type: "fill", cid: cidMatch[1], chatId, ts: Date.now() }
