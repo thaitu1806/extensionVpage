@@ -2316,9 +2316,9 @@ async function getShopOrderText(tabId, lastN = 3) {
 // Lấy N tin nhắn gần nhất để cảnh báo Telegram khi AI chưa kịp tạo template chốt đơn.
 // Lấy CID hội thoại V2 sau khi đã click mở box. VPage dùng khóa composite fanpageId_conversationId.
 async function getTelegramConversationLink(tabId, conv) {
+  let context = {};
   try {
-    // V2: dựng CID trực tiếp từ avatar khách hàng (PSID) và avatar fanpage.
-    // Không click nút Copy link, không đọc clipboard.
+    // Ưu tiên dựng CID trực tiếp từ avatar khách hàng và avatar fanpage.
     const results = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: function () {
@@ -2366,22 +2366,112 @@ async function getTelegramConversationLink(tabId, conv) {
       },
       args: []
     });
-    const context = results?.[0]?.result || {};
-    if (context.version === "v2") {
-      const cid = String(context.cid || "").trim();
-      if (!/^\d+_\d+$/.test(cid)) {
-        blog(`Telegram link: V2 trích xuất CID từ avatar thất bại cho "${conv?.name || ""}": ${context.reason || "CID trống"}; fanpageId=${context.fanpageId || "(trống)"}; PSID=${context.psid || "(trống)"}.`);
-        return "__V2_NO_CID__";
-      }
-      blog(`Telegram link: dựng CID từ avatar thành công cho "${conv?.name || ""}": fanpageId=${context.fanpageId}, PSID=${context.psid}, CID=${cid}.`);
-      return context.link;
-    }
+    context = results?.[0]?.result || {};
+  } catch (e) {
+    blog("Telegram link: đọc avatar gặp lỗi cho \"" + (conv?.name || "") + "\": " + e.message);
+  }
+
+  if (context.version === "v1") {
     // V1 vẫn giữ đường dẫn tìm hội thoại theo SĐT như trước.
     return "";
+  }
+
+  if (context.version === "v2") {
+    const cid = String(context.cid || "").trim();
+    if (/^\d+_\d+$/.test(cid)) {
+      blog("Telegram link: dựng CID từ avatar thành công cho \"" + (conv?.name || "") + "\": fanpageId=" + context.fanpageId + ", PSID=" + context.psid + ", CID=" + cid + ".");
+      return context.link;
+    }
+    blog("Telegram link: V2 trích xuất CID từ avatar thất bại cho \"" + (conv?.name || "") + "\": " + (context.reason || "CID trống") + "; fanpageId=" + (context.fanpageId || "(trống)") + "; PSID=" + (context.psid || "(trống)") + ". Thử Copy link hội thoại.");
+  } else {
+    // Không xác định được version hoặc lỗi đọc DOM: chỉ thử fallback nếu tab đang ở VPage.
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (!String(tab?.url || "").startsWith("https://vpage.nhanh.vn/")) {
+        blog("Telegram link: không xác định được V2; không thử Copy link để tránh tác động nhầm trang.");
+        return "__V2_NO_CID__";
+      }
+    } catch (_) {
+      return "__V2_NO_CID__";
+    }
+  }
+
+  // Fallback V2: hook clipboard.writeText trong MAIN world, click nút Copy link
+  // và lấy URL ngay tại thời điểm VPage ghi clipboard (không cần quyền readText).
+  try {
+    const copyResults = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: async function () {
+        const buttons = Array.from(document.querySelectorAll('a[title="Copy link hội thoại"]'))
+          .filter((el) => el.getClientRects().length > 0);
+        if (buttons.length !== 1) {
+          return {
+            ok: false,
+            reason: buttons.length === 0
+              ? "Không tìm thấy nút Copy link hội thoại"
+              : "Có nhiều nút Copy link hội thoại, không thể xác định duy nhất"
+          };
+        }
+
+        const clipboard = navigator.clipboard;
+        if (!clipboard || typeof clipboard.writeText !== "function") {
+          return { ok: false, reason: "Clipboard API không khả dụng" };
+        }
+
+        const originalWriteText = clipboard.writeText;
+        let copiedText = "";
+        let hooked = false;
+        try {
+          clipboard.writeText = function (value) {
+            copiedText = String(value ?? "");
+            return originalWriteText.call(this, value);
+          };
+          hooked = clipboard.writeText !== originalWriteText;
+        } catch (_) {}
+
+        if (!hooked) {
+          return { ok: false, reason: "Không hook được clipboard.writeText" };
+        }
+
+        try {
+          buttons[0].click();
+          for (let i = 0; i < 30 && !copiedText; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        } finally {
+          try { clipboard.writeText = originalWriteText; } catch (_) {}
+        }
+
+        if (!copiedText) {
+          return { ok: false, reason: "Vpage không gọi clipboard.writeText sau khi click" };
+        }
+
+        try {
+          const url = new URL(copiedText);
+          const cid = url.searchParams.get("cid") || "";
+          if (url.origin !== "https://vpage.nhanh.vn"
+            || url.pathname !== "/conversation"
+            || !/^\d+_\d+$/.test(cid)) {
+            return { ok: false, reason: "URL copy không đúng định dạng CID VPage", copiedText };
+          }
+          return { ok: true, cid, link: url.origin + url.pathname + "?cid=" + cid };
+        } catch (_) {
+          return { ok: false, reason: "Không phân tích được URL copy", copiedText };
+        }
+      },
+      args: []
+    });
+
+    const copied = copyResults?.[0]?.result || {};
+    if (copied.ok && /^\d+_\d+$/.test(String(copied.cid || ""))) {
+      blog("Telegram link: fallback Copy link thành công cho \"" + (conv?.name || "") + "\": CID=" + copied.cid + ".");
+      return copied.link;
+    }
+    blog("Telegram link: fallback Copy link thất bại cho \"" + (conv?.name || "") + "\": " + (copied.reason || "Không nhận được kết quả") + ".");
+    return "__V2_NO_CID__";
   } catch (e) {
-    // Không fallback sang customerName khi lỗi đọc DOM V2: tránh tạo link sai.
-    // V1 được nhận diện bình thường ở trên và vẫn trả chuỗi rỗng để dùng link legacy.
-    blog("Telegram link: không lấy được CID từ avatar; ẩn link thay vì fallback customerName:", e.message);
+    blog("Telegram link: lỗi fallback Copy link cho \"" + (conv?.name || "") + "\": " + e.message);
     return "__V2_NO_CID__";
   }
 }
