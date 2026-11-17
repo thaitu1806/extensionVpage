@@ -3587,7 +3587,7 @@ async function processPushedCommand(cmd) {
       } else {
         const cid = String(cmd.cid || "").trim();
         const phone = String(cmd.phone || "").trim();
-        const useCid = /^\\d+_\\d+$/.test(cid);
+        const useCid = /^\d+_\d+$/.test(cid);
         if (!useCid && !/^\\d{6,15}$/.test(phone)) {
           throw new Error("Lệnh lên đơn thiếu CID V2 hợp lệ hoặc SĐT V1 hợp lệ.");
         }
