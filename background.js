@@ -2938,7 +2938,7 @@ async function runScanCycle() {
         blog(`Tracking link reply "${conv.name}": link này đã gửi trước đó, bỏ qua gửi trùng.`);
         continue;
       }
-      const customerReply = `Dạ chị theo dõi đơn hàng qua đây giúp em ạ:\\n${tracking.url}`;
+      const customerReply = `Dạ chị theo dõi đơn hàng qua đây giúp em ạ:\n${tracking.url}`;
       const sendResult = await sendCourierPhoneMessage(tab.id, customerReply);
       if (sendResult?.ok) {
         replySent[trackingReplyKey] = Date.now();
