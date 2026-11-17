@@ -2507,6 +2507,45 @@ function isLatestUndeliveredMessage(message) {
     || (text.includes("tran trong") && text.includes("ma van don"));
 }
 
+/* Tin Business Agent báo sẽ kiểm tra vận chuyển: trả khách link tracking của đơn mới nhất. */
+function isLatestTrackingRequestMessage(message) {
+  if (!message || message.role !== "shop") return false;
+  const text = normalizeTrackingText(message.text || "");
+  return text.includes("don cua minh de em kiem tra thong tin ben van chuyen roi em bao cho minh");
+}
+
+async function getLatestOrderTrackingUrl(tabId) {
+  for (const frameId of await getFrameIds(tabId)) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        func: function () {
+          const items = Array.from(document.querySelectorAll(".c-msg-item"));
+          for (let i = items.length - 1; i >= 0; i--) {
+            const links = Array.from(items[i].querySelectorAll('a[href*="/tracking"]'));
+            for (let j = links.length - 1; j >= 0; j--) {
+              const raw = links[j].href || links[j].getAttribute("href") || "";
+              try {
+                const url = new URL(raw, location.href);
+                if (/^https?:$/.test(url.protocol) && /(^|\\.)nhanh\\.vn$/i.test(url.hostname) && /\\/tracking(?:\\/|$)/i.test(url.pathname)) {
+                  return { ok: true, url: url.href };
+                }
+              } catch (_) {}
+            }
+          }
+          return { ok: false, reason: "không tìm thấy link tracking trong các tin nhắn hội thoại" };
+        }
+      });
+      const result = results?.[0]?.result;
+      if (result?.ok && result.url) return result;
+      if (result?.reason) blog("Tracking link reply: " + result.reason);
+    } catch (e) {
+      blog("Tracking link reply: lỗi lấy link tracking: " + e.message);
+    }
+  }
+  return null;
+}
+
 // Lấy link "Xem vận đơn" nằm ngay trong tin nhắn giao thất bại mới nhất.
 async function getLatestUndeliveredTrackingUrl(tabId) {
   for (const frameId of await getFrameIds(tabId)) {
@@ -2884,6 +2923,33 @@ async function runScanCycle() {
     // Xử lý riêng mẫu shop báo giao hàng thất bại trước quy tắc chặn "Trân trọng".
     // Chỉ xét tin mới nhất; đọc số bưu tá từ trang tracking rồi nhắn lại trong đúng box.
     const latestMessage = recentMessages[recentMessages.length - 1];
+
+    // Nếu tin SHOP mới nhất báo sẽ kiểm tra vận chuyển, trả khách link tracking của đơn gần nhất.
+    if (isLatestTrackingRequestMessage(latestMessage)) {
+      const tracking = await getLatestOrderTrackingUrl(tab.id);
+      if (!tracking?.url) {
+        blog(`Tracking link reply "${conv.name}": tin nhắn yêu cầu kiểm tra vận chuyển nhưng chưa tìm được link tracking; chưa gửi phản hồi.`);
+        continue;
+      }
+      const trackingReplyKey = `tracking-link-reply:${conv.id}:${tracking.url}`;
+      const replyState = await chrome.storage.local.get({ trackingLinkReplySent: {} });
+      const replySent = replyState.trackingLinkReplySent || {};
+      if (replySent[trackingReplyKey]) {
+        blog(`Tracking link reply "${conv.name}": link này đã gửi trước đó, bỏ qua gửi trùng.`);
+        continue;
+      }
+      const customerReply = `Dạ chị theo dõi đơn hàng qua đây giúp em ạ:\\n${tracking.url}`;
+      const sendResult = await sendCourierPhoneMessage(tab.id, customerReply);
+      if (sendResult?.ok) {
+        replySent[trackingReplyKey] = Date.now();
+        await chrome.storage.local.set({ trackingLinkReplySent: replySent });
+        blog(`Tracking link reply "${conv.name}": đã gửi link tracking ${tracking.url} cho khách.`);
+      } else {
+        blog(`Tracking link reply "${conv.name}": gửi thất bại (${sendResult?.reason || "không rõ lỗi"}); sẽ thử lại ở lượt quét sau.`);
+      }
+      continue;
+    }
+
     if (isLatestUndeliveredMessage(latestMessage)) {
       const tracking = await getLatestUndeliveredTrackingUrl(tab.id);
       if (!tracking?.url) {
