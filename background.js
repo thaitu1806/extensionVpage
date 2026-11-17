@@ -2527,7 +2527,7 @@ async function getLatestOrderTrackingUrl(tabId) {
               const raw = links[j].href || links[j].getAttribute("href") || "";
               try {
                 const url = new URL(raw, location.href);
-                if (/^https?:$/.test(url.protocol) && /(^|\\.)nhanh\\.vn$/i.test(url.hostname) && /\\/tracking(?:\\/|$)/i.test(url.pathname)) {
+                if (/^https?:$/.test(url.protocol) && /(^|\.)nhanh\.vn$/i.test(url.hostname) && /\/tracking(?:\/|$)/i.test(url.pathname)) {
                   return { ok: true, url: url.href };
                 }
               } catch (_) {}
