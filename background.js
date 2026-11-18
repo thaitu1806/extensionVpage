@@ -2226,6 +2226,28 @@ async function findConversationTab() {
   return candidates.find((tab) => tab.status === "complete") || candidates[0] || null;
 }
 
+// Sau F5, content script của manifest thường tự nạp lại. Chủ động gọi thêm
+// content.js ở top frame để tránh race condition; guard trong content.js chặn nạp trùng.
+async function restoreVpageContentScript(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId, frameIds: [0] },
+    files: ["content.js"]
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const checks = await chrome.scripting.executeScript({
+    target: { tabId, frameIds: [0] },
+    func: () => ({
+      ready: window.__dsFillContentLoaded === true,
+      url: location.href,
+      title: document.title
+    })
+  });
+  const state = checks?.[0]?.result || {};
+  if (!state.ready) throw new Error("content.js chưa xác nhận trạng thái đã nạp sau refresh");
+  blog("Vpage content.js đã sẵn sàng sau refresh:", JSON.stringify(state));
+  return true;
+}
+
 // Liệt kê hội thoại theo chế độ: V2 dùng .conv-item; V1 giữ selector cũ.
 async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
   try {
@@ -2861,6 +2883,9 @@ async function runScanCycle() {
     checkpointAt = Number(saved.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
     // Lấy tối đa 50 box để không bỏ sót box mới hoạt động nằm sau các box cũ.
     let candidates = await listConversations(tab.id, scanMode, 50);
+    // Tối đa một lần F5 trong mỗi chu kỳ quét, tránh hai điều kiện refresh
+    // (DOM ổn định và thiếu timestamp) reload liên tiếp.
+    let refreshAttemptedThisCycle = false;
 
     // Theo dõi số chu kỳ liên tiếp mà fingerprint danh sách box không thay đổi.
     // Ngưỡng và quyền tự refresh được cấu hình tại trang Options.
@@ -2878,8 +2903,9 @@ async function runScanCycle() {
     const stableThreshold = Math.max(1, Math.min(50, parseInt(cfg.scanDomStableThreshold, 10) || 5));
     const autoRefreshEnabled = cfg.scanDomRefreshEnabled !== false;
 
-    if (unchangedCount >= stableThreshold && autoRefreshEnabled) {
-      blog(`DOM Vpage không thay đổi qua ${unchangedCount} lần quét liên tiếp (ngưỡng ${stableThreshold}); thử refresh tab để đồng bộ danh sách.`);
+    if (unchangedCount >= stableThreshold && autoRefreshEnabled && !tab.active) {
+      refreshAttemptedThisCycle = true;
+      blog(`DOM Vpage không thay đổi qua ${unchangedCount} lần quét liên tiếp (ngưỡng ${stableThreshold}); tab đang nền nên thử refresh.`);
       await chrome.storage.local.set({
         scanDomFingerprint: snapshot,
         scanDomUnchangedCount: 0,
@@ -2890,6 +2916,7 @@ async function runScanCycle() {
         const loaded = await waitTabComplete(tab.id, 30000);
         if (loaded) {
           await new Promise((resolve) => setTimeout(resolve, 2500));
+          await restoreVpageContentScript(tab.id);
           const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
           if (refreshedCandidates.length) {
             candidates = refreshedCandidates;
@@ -2910,6 +2937,8 @@ async function runScanCycle() {
       });
       if (!autoRefreshEnabled && unchangedCount >= stableThreshold) {
         blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng ${stableThreshold}); tự refresh đang TẮT nên không reload VPage.`);
+      } else if (unchangedCount >= stableThreshold && tab.active) {
+        blog(`DOM ổn định ${unchangedCount} lần nhưng Vpage đang là tab active; hoãn F5 để không làm gián đoạn thao tác người dùng.`);
       } else {
         blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: ${stableThreshold}).`);
       }
@@ -2932,7 +2961,8 @@ async function runScanCycle() {
     const hasUnparsedActivity = candidates.some((conv) =>
       !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)
     );
-    if (hasUnparsedActivity && autoRefreshEnabled) {
+    if (hasUnparsedActivity && autoRefreshEnabled && !refreshAttemptedThisCycle && !tab.active) {
+      refreshAttemptedThisCycle = true;
       const missingNames = candidates
         .filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText))
         .map((conv) => conv.name);
@@ -2942,6 +2972,7 @@ async function runScanCycle() {
         const loaded = await waitTabComplete(tab.id, 30000);
         if (loaded) {
           await new Promise((resolve) => setTimeout(resolve, 2500));
+          await restoreVpageContentScript(tab.id);
           const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
           if (refreshedCandidates.length) {
             candidates = refreshedCandidates;
@@ -2958,6 +2989,11 @@ async function runScanCycle() {
     } else if (hasUnparsedActivity && !autoRefreshEnabled) {
       const missingNames = candidates.filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)).map((conv) => conv.name);
       blog(`Có ${missingNames.length} box không đọc được thời gian (${missingNames.join(", ")}); tự refresh đang TẮT nên bỏ qua reload và vẫn đưa box vào xử lý.`);
+    } else if (hasUnparsedActivity && tab.active) {
+      const missingNames = candidates.filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)).map((conv) => conv.name);
+      blog(`Có ${missingNames.length} box thiếu thời gian (${missingNames.join(", ")}); Vpage đang active nên hoãn F5 để tránh gián đoạn.`);
+    } else if (hasUnparsedActivity && refreshAttemptedThisCycle) {
+      blog("Có box thiếu thời gian nhưng chu kỳ này đã thử refresh; không F5 lần thứ hai.");
     }
 
     const recentSecondsBoxes = candidates.filter((conv) => isFewSecondsLabel(conv.timeText));
