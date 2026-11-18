@@ -2834,11 +2834,27 @@ async function runScanCycle() {
       blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: 5).`);
     }
 
-    // V2 đôi khi render box nhưng .conv-time rỗng (DOM chưa đồng bộ).
-    // Chủ động refresh ngay trong lượt quét này thay vì chờ 5 snapshot không đổi.
-    const hasUnparsedActivity = candidates.some((conv) => !Number(conv.activityAt));
+    // "Vài giây trước" không cần parse timestamp và tuyệt đối không được
+    // kích hoạt reload. Giữ activityAt=0 để incremental filter đưa box vào quét
+    // theo đúng thứ tự DOM của Vpage.
+    const isFewSecondsLabel = (value) => {
+      const normalized = String(value || "").trim().toLowerCase()
+        .normalize("NFD")
+        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/\\s+/g, " ");
+      return /\\bvai giay\\b|a few seconds|few seconds|seconds ago/.test(normalized);
+    };
+
+    // Chỉ refresh khi thời gian thực sự bị thiếu/không đọc được,
+    // không refresh với nhãn "vài giây trước".
+    const hasUnparsedActivity = candidates.some((conv) =>
+      !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)
+    );
     if (hasUnparsedActivity) {
-      const missingNames = candidates.filter((conv) => !Number(conv.activityAt)).map((conv) => conv.name);
+      const missingNames = candidates
+        .filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText))
+        .map((conv) => conv.name);
       blog(`Phát hiện ${missingNames.length} box V2 không đọc được thời gian (${missingNames.join(", ")}); refresh Vpage để đọc lại.`);
       try {
         await chrome.tabs.reload(tab.id);
@@ -2860,7 +2876,14 @@ async function runScanCycle() {
       }
     }
 
-    const stillUnparsed = candidates.filter((conv) => !Number(conv.activityAt));
+    const recentSecondsBoxes = candidates.filter((conv) => isFewSecondsLabel(conv.timeText));
+    if (recentSecondsBoxes.length) {
+      blog(`Có ${recentSecondsBoxes.length} box "vài giây trước" (không parse timestamp); vẫn đưa vào quét theo thứ tự Vpage: ${recentSecondsBoxes.map((conv) => conv.name).join(", ")}.`);
+    }
+
+    const stillUnparsed = candidates.filter((conv) =>
+      !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)
+    );
     if (stillUnparsed.length) {
       blog(`Sau refresh vẫn còn ${stillUnparsed.length} box thiếu thời gian: ${stillUnparsed.map((conv) => conv.name).join(", ")}. Sẽ đưa các box này vào xử lý để không bỏ sót.`);
     }
