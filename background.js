@@ -2244,7 +2244,20 @@ async function restoreVpageContentScript(tabId) {
   });
   const state = checks?.[0]?.result || {};
   if (!state.ready) throw new Error("content.js chưa xác nhận trạng thái đã nạp sau refresh");
-  blog("Vpage content.js đã sẵn sàng sau refresh:", JSON.stringify(state));
+  // inject.js chạy trong MAIN world; kiểm tra riêng để tránh content.js sẵn sàng
+  // nhưng bridge set giá/AutoNumeric chưa được nạp.
+  let mainWorldReady = false;
+  for (let attempt = 0; attempt < 10 && !mainWorldReady; attempt++) {
+    const mainChecks = await chrome.scripting.executeScript({
+      target: { tabId, frameIds: [0] },
+      world: "MAIN",
+      func: () => window.__dsFillInjectLoaded === true
+    });
+    mainWorldReady = mainChecks?.[0]?.result === true;
+    if (!mainWorldReady) await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  if (!mainWorldReady) throw new Error("inject.js MAIN world chưa sẵn sàng sau refresh");
+  blog("Vpage content.js và inject.js đã sẵn sàng sau refresh:", JSON.stringify(state));
   return true;
 }
 
