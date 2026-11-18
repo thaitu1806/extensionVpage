@@ -1292,6 +1292,30 @@ async function runFill(tabId, options = {}) {
       ", 2 cấp=" + JSON.stringify(extracted.addressRegion2));
   }
 
+  // Gemini fallback sớm: nếu DeepSeek/JS vẫn thiếu MỘT TRONG HAI cấp địa giới,
+  // tận dụng cơ chế Gemini dùng chung hiện có để chuẩn hóa cả addressRegion và addressRegion2.
+  if (!String(extracted.addressRegion || "").trim() || !String(extracted.addressRegion2 || "").trim()) {
+    const geminiRawAddress = [extracted.address, extracted.addressRegion].filter(Boolean).join(", ");
+    blog("Thiếu addressRegion/addressRegion2 -> gọi Gemini fallback chuẩn hóa:", geminiRawAddress);
+    try {
+      const geminiNorm = await resolveAddressWithGemini(
+        geminiRawAddress,
+        extracted.addressRegion,
+        extracted.addressRegion2
+      );
+      extracted.addressRegion = geminiNorm.addressRegion;
+      extracted.addressRegion2 = geminiNorm.addressRegion2;
+      blog("Chuẩn hóa địa chỉ (Gemini fallback thành công):", JSON.stringify({
+        address: extracted.address,
+        addressRegion: extracted.addressRegion,
+        addressRegion2: extracted.addressRegion2,
+        warning: geminiNorm.warning || ""
+      }));
+    } catch (geminiError) {
+      blog("Gemini fallback chuẩn hóa địa chỉ thất bại; giữ nguyên địa chỉ gốc:", geminiError?.message || geminiError);
+    }
+  }
+
   // Chỉ đổi Quy Nhơn -> Qui Nhơn trong địa chỉ hành chính 3 cấp; bản 2 cấp giữ Quy Nhơn.
   normalizeAddressPlaceNames(extracted);
   appendMissingHcmProvince(extracted);
