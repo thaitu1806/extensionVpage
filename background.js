@@ -2210,8 +2210,20 @@ async function tgSend(token, chatId, text, replyMarkup) {
 
 // Tìm tab conversation của vpage (để quét DOM hội thoại).
 async function findConversationTab() {
+  // Không phụ thuộc tab đang active (Gemini/Nhanh/website khác).
+  // Ưu tiên đúng trang danh sách hội thoại, tránh chọn tab Vpage phụ hoặc tab cũ.
   const tabs = await chrome.tabs.query({ url: "https://vpage.nhanh.vn/*" });
-  return tabs && tabs.length ? tabs[0] : null;
+  const candidates = (tabs || []).filter((tab) => {
+    try {
+      const url = new URL(String(tab.url || ""));
+      return url.hostname === "vpage.nhanh.vn" &&
+        (url.pathname === "/conversation" || url.pathname.startsWith("/conversation/"));
+    } catch (_) {
+      return false;
+    }
+  });
+  // Nếu có nhiều tab conversation, ưu tiên tab đã tải xong; vẫn không yêu cầu active.
+  return candidates.find((tab) => tab.status === "complete") || candidates[0] || null;
 }
 
 // Liệt kê hội thoại theo chế độ: V2 dùng .conv-item; V1 giữ selector cũ.
@@ -2271,7 +2283,28 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
     if (r.version === "v2") blog("V2 activity:", (r.list || []).map((x) => `${x.name}: "${x.timeText}" -> ${x.activityAt ? new Date(x.activityAt).toLocaleTimeString("vi-VN") : "KHÔNG PARSE"}`).join(" | "));
     return r.list || [];
   } catch (e) {
-    blog("listConversations lỗi:", e.message);
+    // Chẩn đoán theo tab thực tế, không giả định tab active là tab cần quét.
+    let tabInfo = null;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      let host = "";
+      try { host = new URL(String(tab.url || "")).hostname; } catch (_) {}
+      const hasHostPermission = await chrome.permissions.contains({
+        origins: ["https://vpage.nhanh.vn/*"]
+      });
+      tabInfo = {
+        tabId: tab.id,
+        url: tab.url || "",
+        title: tab.title || "",
+        status: tab.status || "",
+        active: !!tab.active,
+        host,
+        hasHostPermission
+      };
+    } catch (tabError) {
+      tabInfo = { tabId, tabLookupError: tabError?.message || String(tabError) };
+    }
+    blog("listConversations lỗi:", e?.message || String(e), "| target:", JSON.stringify(tabInfo));
     return [];
   }
 }
