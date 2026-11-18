@@ -4,6 +4,7 @@
 (function () {
   const TAG = "[DS-Fill inject]";
   function log(...a) { console.log(TAG, ...a); }
+  window.__dsFillInjectLoaded = true;
   log("đã nạp vào main world. ng =", typeof window.ng);
 
   function findMarked(marker) { return document.querySelector(`[data-dsfill="${marker}"]`); }
