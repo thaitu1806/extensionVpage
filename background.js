@@ -2798,6 +2798,7 @@ async function processScanNotification(item, cfg, notified) {
 async function runScanCycle() {
   const cfg = await chrome.storage.local.get({
     tgEnabled: false, tgToken: "", tgChatId: "", msgCount: "3", tgMsgCount: 3, scanMode: "unread", scanStrategy: "fixed", scanBaselineAt: 0,
+    scanDomRefreshEnabled: true, scanDomStableThreshold: 5,
     autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false, workerUrl: ""
   });
   if (!cfg.tgEnabled) {
@@ -2828,8 +2829,8 @@ async function runScanCycle() {
     // Lấy tối đa 50 box để không bỏ sót box mới hoạt động nằm sau các box cũ.
     let candidates = await listConversations(tab.id, scanMode, 50);
 
-    // Nếu dữ liệu danh sách không đổi trong 5 chu kỳ quét liên tiếp (mỗi chu kỳ 3 phút),
-    // thử reload Vpage một lần để đồng bộ lại DOM/state đang bị stale.
+    // Theo dõi số chu kỳ liên tiếp mà fingerprint danh sách box không thay đổi.
+    // Ngưỡng và quyền tự refresh được cấu hình tại trang Options.
     const snapshot = JSON.stringify(candidates.map((conv, index) => ({
       index,
       name: String(conv.name || "").trim()
@@ -2841,9 +2842,11 @@ async function runScanCycle() {
     const unchangedCount = scanState.scanDomFingerprint === snapshot
       ? Number(scanState.scanDomUnchangedCount || 0) + 1
       : 1;
+    const stableThreshold = Math.max(1, Math.min(50, parseInt(cfg.scanDomStableThreshold, 10) || 5));
+    const autoRefreshEnabled = cfg.scanDomRefreshEnabled !== false;
 
-    if (unchangedCount >= 5) {
-      blog("DOM Vpage không thay đổi qua 5 lần quét; thử refresh tab để đồng bộ danh sách.");
+    if (unchangedCount >= stableThreshold && autoRefreshEnabled) {
+      blog(`DOM Vpage không thay đổi qua ${unchangedCount} lần quét liên tiếp (ngưỡng ${stableThreshold}); thử refresh tab để đồng bộ danh sách.`);
       await chrome.storage.local.set({
         scanDomFingerprint: snapshot,
         scanDomUnchangedCount: 0,
@@ -2872,7 +2875,11 @@ async function runScanCycle() {
         scanDomFingerprint: snapshot,
         scanDomUnchangedCount: unchangedCount
       });
-      blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: 5).`);
+      if (!autoRefreshEnabled && unchangedCount >= stableThreshold) {
+        blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng ${stableThreshold}); tự refresh đang TẮT nên không reload VPage.`);
+      } else {
+        blog(`DOM snapshot: dữ liệu ổn định ${unchangedCount} lần liên tiếp (ngưỡng refresh: ${stableThreshold}).`);
+      }
     }
 
     // "Vài giây trước" không cần parse timestamp và tuyệt đối không được
@@ -2892,7 +2899,7 @@ async function runScanCycle() {
     const hasUnparsedActivity = candidates.some((conv) =>
       !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)
     );
-    if (hasUnparsedActivity) {
+    if (hasUnparsedActivity && autoRefreshEnabled) {
       const missingNames = candidates
         .filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText))
         .map((conv) => conv.name);
@@ -2915,6 +2922,9 @@ async function runScanCycle() {
       } catch (refreshError) {
         blog("Refresh do thiếu thời gian lỗi:", refreshError?.message || refreshError);
       }
+    } else if (hasUnparsedActivity && !autoRefreshEnabled) {
+      const missingNames = candidates.filter((conv) => !Number(conv.activityAt) && !isFewSecondsLabel(conv.timeText)).map((conv) => conv.name);
+      blog(`Có ${missingNames.length} box không đọc được thời gian (${missingNames.join(", ")}); tự refresh đang TẮT nên bỏ qua reload và vẫn đưa box vào xử lý.`);
     }
 
     const recentSecondsBoxes = candidates.filter((conv) => isFewSecondsLabel(conv.timeText));
