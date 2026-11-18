@@ -32,6 +32,8 @@ const DEFAULTS = {
   scanMode: "unread",
   scanStrategy: "fixed",
   scanRecentCount: 5,
+  scanDomRefreshEnabled: true,
+  scanDomStableThreshold: 5,
   bizAiAutoContinue: false,
   scanIntervalMinutes: 3,
   tgToken: "",
@@ -84,6 +86,8 @@ function load() {
     $("scanMode").value = cfg.scanMode === "recent5" ? "recent5" : "unread";
     $("scanStrategy").value = cfg.scanStrategy === "incremental" ? "incremental" : "fixed";
     $("scanRecentCount").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5)));
+    $("scanDomRefreshEnabled").checked = cfg.scanDomRefreshEnabled !== false;
+    $("scanDomStableThreshold").value = String(Math.max(1, Math.min(50, parseInt(cfg.scanDomStableThreshold, 10) || 5)));
     $("bizAiAutoContinue").checked = cfg.bizAiAutoContinue === true;
     $("scanIntervalMinutes").value = String(Math.max(1, Math.min(1440, parseInt(cfg.scanIntervalMinutes, 10) || 3)));
     $("tgToken").value = cfg.tgToken || "";
@@ -124,6 +128,8 @@ function save() {
     scanStrategy: $("scanStrategy").value === "incremental" ? "incremental" : "fixed",
     scanBaselineAt: $("scanStrategy").value === "incremental" ? Date.now() : 0,
     scanRecentCount: Math.max(1, Math.min(50, parseInt($("scanRecentCount").value, 10) || 5)),
+    scanDomRefreshEnabled: $("scanDomRefreshEnabled").checked,
+    scanDomStableThreshold: Math.max(1, Math.min(50, parseInt($("scanDomStableThreshold").value, 10) || 5)),
     bizAiAutoContinue: $("bizAiAutoContinue").checked,
     scanIntervalMinutes: Math.max(1, Math.min(1440, parseInt($("scanIntervalMinutes").value, 10) || 3)),
     tgToken: $("tgToken").value.trim(),
