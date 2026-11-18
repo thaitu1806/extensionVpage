@@ -2534,6 +2534,7 @@ function isLatestUndeliveredMessage(message) {
     || text.includes("giao hang that bai")
     || text.includes("giao hang khong thanh cong")
     || text.includes("khong giao duoc")
+    || text.includes("mat kha nhieu cong suc")
     || text.includes("lien he buu ta");
 }
 
@@ -2599,6 +2600,7 @@ async function getLatestUndeliveredTrackingUrl(tabId) {
             || text.includes("giao hang that bai")
             || text.includes("giao hang khong thanh cong")
             || text.includes("khong giao duoc")
+            || text.includes("mat kha nhieu cong suc")
             || text.includes("lien he buu ta")
             || linkText.includes("liên hệ bưu tá")
             || linkText.includes("lien he buu ta");
