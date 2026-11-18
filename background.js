@@ -2527,8 +2527,14 @@ async function getRecentConversationMessages(tabId, lastN = 3) {
 function isLatestUndeliveredMessage(message) {
   if (!message || message.role !== "shop") return false;
   const text = normalizeTrackingText(message.text || "");
+  // Nhanh.vn có nhiều mẫu thông báo giao thất bại; mẫu mới có nút "Liên hệ Bưu Tá"
+  // thay vì câu "Chưa giao được thành công" / "Trân trọng - Mã vận đơn".
   return text.includes("chua giao duoc thanh cong")
-    || (text.includes("tran trong") && text.includes("ma van don"));
+    || (text.includes("tran trong") && text.includes("ma van don"))
+    || text.includes("giao hang that bai")
+    || text.includes("giao hang khong thanh cong")
+    || text.includes("khong giao duoc")
+    || text.includes("lien he buu ta");
 }
 
 /* Tin Business Agent báo sẽ kiểm tra vận chuyển: trả khách link tracking của đơn mới nhất. */
@@ -2586,14 +2592,23 @@ async function getLatestUndeliveredTrackingUrl(tabId) {
             .toLowerCase().replace(/đ/g, "d")
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
             .replace(/\s+/g, " ").trim();
-          const isTarget = text.includes("chua giao duoc thanh cong")
-            || (text.includes("tran trong") && text.includes("ma van don"));
-          if (!isTarget) return { ok: false, reason: "tin mới nhất không phải mẫu giao thất bại" };
           const links = Array.from(item.querySelectorAll('a[href*="/tracking"]'));
-          const link = links.find((a) =>
-            String(a.innerText || a.textContent || "").toLowerCase().includes("xem van don")
-          ) || links[0];
-          return link ? { ok: true, url: link.href, text } : { ok: false, reason: "không có link Xem vận đơn trong tin mới nhất" };
+          const linkText = links.map((a) => String(a.innerText || a.textContent || "").toLowerCase()).join(" ");
+          const isTarget = text.includes("chua giao duoc thanh cong")
+            || (text.includes("tran trong") && text.includes("ma van don"))
+            || text.includes("giao hang that bai")
+            || text.includes("giao hang khong thanh cong")
+            || text.includes("khong giao duoc")
+            || text.includes("lien he buu ta")
+            || linkText.includes("liên hệ bưu tá")
+            || linkText.includes("lien he buu ta");
+          if (!isTarget) return { ok: false, reason: "tin mới nhất không khớp mẫu giao thất bại (không có từ khóa hoặc nút Liên hệ Bưu Tá)" };
+          // Ưu tiên đúng nút "Liên hệ Bưu Tá"; tương thích mẫu cũ "Xem vận đơn".
+          const link = links.find((a) => /liên hệ bưu tá|lien he buu ta/i.test(String(a.innerText || a.textContent || "")))
+            || links.find((a) => /xem vận đơn|xem van don/i.test(String(a.innerText || a.textContent || "")))
+            || links[0];
+          return link ? { ok: true, url: link.href, text, linkLabel: String(link.innerText || link.textContent || "").trim() }
+            : { ok: false, reason: "không có link tracking trong tin giao thất bại mới nhất" };
         }
       });
       const result = results?.[0]?.result;
