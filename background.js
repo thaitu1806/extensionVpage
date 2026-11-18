@@ -2840,10 +2840,10 @@ async function runScanCycle() {
     const isFewSecondsLabel = (value) => {
       const normalized = String(value || "").trim().toLowerCase()
         .normalize("NFD")
-        .replace(/[\\u0300-\\u036f]/g, "")
+        .replace(/[\u0300-\u036f]/g, "")
         .replace(/đ/g, "d")
-        .replace(/\\s+/g, " ");
-      return /\\bvai giay\\b|a few seconds|few seconds|seconds ago/.test(normalized);
+        .replace(/\s+/g, " ");
+      return /\bvai giay\b|a few seconds|few seconds|seconds ago/.test(normalized);
     };
 
     // Chỉ refresh khi thời gian thực sự bị thiếu/không đọc được,
