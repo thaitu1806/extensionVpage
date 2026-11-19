@@ -2222,8 +2222,49 @@ async function findConversationTab() {
       return false;
     }
   });
-  // Nếu có nhiều tab conversation, ưu tiên tab đã tải xong; vẫn không yêu cầu active.
-  return candidates.find((tab) => tab.status === "complete") || candidates[0] || null;
+  // Ưu tiên tab đã tải và chưa bị Chrome discard; vẫn không yêu cầu active.
+  return candidates.find((tab) => tab.status === "complete" && !tab.discarded)
+    || candidates.find((tab) => !tab.discarded)
+    || candidates[0]
+    || null;
+}
+
+// Khôi phục tab Vpage khi Chrome đã discard/unload nó để giải phóng bộ nhớ.
+// Chỉ reload đúng tab Vpage ở nền; không đổi active tab nên Gemini vẫn giữ focus.
+async function recoverConversationTab(tabId, reason = "tab chưa được nạp") {
+  let before;
+  try {
+    before = await chrome.tabs.get(tabId);
+  } catch (e) {
+    blog("Không lấy được thông tin tab Vpage để khôi phục:", e?.message || e);
+    return false;
+  }
+  if (!before || !/^https:\/\/vpage\.nhanh\.vn\/conversation(?:\/|$)/.test(String(before.url || ""))) {
+    blog("Bỏ khôi phục vì tab không còn là trang conversation Vpage.");
+    return false;
+  }
+
+  blog(`Khôi phục tab Vpage #${tabId}: ${reason}; status=${before.status || "?"}, discarded=${!!before.discarded}, active=${!!before.active}.`);
+  try {
+    await chrome.tabs.reload(tabId);
+    const loaded = await waitTabComplete(tabId, 45000);
+    if (!loaded) {
+      blog("Khôi phục Vpage thất bại: chờ tải trang quá 45 giây.");
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const current = await chrome.tabs.get(tabId);
+    if (current.discarded || current.status !== "complete") {
+      blog(`Khôi phục Vpage chưa hoàn tất: status=${current.status}, discarded=${!!current.discarded}.`);
+      return false;
+    }
+    await restoreVpageContentScript(tabId);
+    blog("Đã khôi phục tab Vpage và xác nhận content.js/inject.js sẵn sàng.");
+    return true;
+  } catch (e) {
+    blog("Khôi phục tab Vpage lỗi:", e?.message || e);
+    return false;
+  }
 }
 
 // Sau F5, content script của manifest thường tự nạp lại. Chủ động gọi thêm
@@ -2340,7 +2381,8 @@ async function listConversations(tabId, scanMode = "unread", recentCount = 5) {
       tabInfo = { tabId, tabLookupError: tabError?.message || String(tabError) };
     }
     blog("listConversations lỗi:", e?.message || String(e), "| target:", JSON.stringify(tabInfo));
-    return [];
+    // null = lỗi truy cập/injection; [] chỉ dùng cho trường hợp đọc thành công nhưng không có box.
+    return null;
   }
 }
 
@@ -2884,6 +2926,19 @@ async function runScanCycle() {
   const tab = await findConversationTab();
   if (!tab) { blog("Quét: không có tab vpage mở -> bỏ qua."); return; }
 
+  // Chrome có thể discard tab Vpage đang nằm nền (Gemini vẫn là tab active).
+  // Khôi phục trước khi inject; tuyệt đối không chuyển focus sang Vpage.
+  if (tab.discarded || tab.status === "unloaded") {
+    const recovered = await recoverConversationTab(
+      tab.id,
+      `Chrome discard/unload tab (status=${tab.status || "?"}, discarded=${!!tab.discarded})`
+    );
+    if (!recovered) {
+      blog("Quét hủy: không khôi phục được tab Vpage; giữ nguyên checkpoint để thử lại chu kỳ sau.");
+      return;
+    }
+  }
+
   // Chọn danh sách theo cấu hình: chỉ chưa đọc (mặc định) hoặc 5 box gần nhất.
   const scanMode = cfg.scanMode === "recent5" ? "recent5" : "unread";
   const recentCount = Math.max(1, Math.min(50, parseInt(cfg.scanRecentCount, 10) || 5));
@@ -2896,6 +2951,18 @@ async function runScanCycle() {
     checkpointAt = Number(saved.scanActivityCheckpoint) || Number(cfg.scanBaselineAt) || 0;
     // Lấy tối đa 50 box để không bỏ sót box mới hoạt động nằm sau các box cũ.
     let candidates = await listConversations(tab.id, scanMode, 50);
+    if (candidates === null) {
+      blog("listConversations lỗi ở tab nền; thử khôi phục/reload Vpage rồi quét lại một lần.");
+      if (!await recoverConversationTab(tab.id, "executeScript không truy cập được trang")) {
+        blog("Quét hủy: khôi phục Vpage thất bại; không cập nhật checkpoint.");
+        return;
+      }
+      candidates = await listConversations(tab.id, scanMode, 50);
+      if (candidates === null) {
+        blog("Quét hủy: listConversations vẫn lỗi sau khi khôi phục; không cập nhật checkpoint.");
+        return;
+      }
+    }
     // Tối đa một lần F5 trong mỗi chu kỳ quét, tránh hai điều kiện refresh
     // (DOM ổn định và thiếu timestamp) reload liên tiếp.
     let refreshAttemptedThisCycle = false;
@@ -2931,7 +2998,7 @@ async function runScanCycle() {
           await new Promise((resolve) => setTimeout(resolve, 2500));
           await restoreVpageContentScript(tab.id);
           const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
-          if (refreshedCandidates.length) {
+          if (refreshedCandidates && refreshedCandidates.length) {
             candidates = refreshedCandidates;
             blog(`Refresh Vpage thành công: tải lại được ${candidates.length} box.`);
           } else {
@@ -2987,7 +3054,7 @@ async function runScanCycle() {
           await new Promise((resolve) => setTimeout(resolve, 2500));
           await restoreVpageContentScript(tab.id);
           const refreshedCandidates = await listConversations(tab.id, scanMode, 50);
-          if (refreshedCandidates.length) {
+          if (refreshedCandidates && refreshedCandidates.length) {
             candidates = refreshedCandidates;
             blog(`Refresh do thiếu thời gian thành công: đọc lại được ${candidates.length} box.`);
           } else {
@@ -3029,6 +3096,18 @@ async function runScanCycle() {
     blog("Incremental candidates:", conversations.map((x) => `${x.name} (${x.timeText})`).join(" | ") || "(không có)");
   } else {
     conversations = await listConversations(tab.id, scanMode, recentCount);
+    if (conversations === null) {
+      blog("listConversations lỗi; thử khôi phục/reload Vpage rồi quét lại một lần.");
+      if (!await recoverConversationTab(tab.id, "executeScript không truy cập được trang")) {
+        blog("Quét hủy: không khôi phục được Vpage; không xử lý danh sách rỗng.");
+        return;
+      }
+      conversations = await listConversations(tab.id, scanMode, recentCount);
+      if (conversations === null) {
+        blog("Quét hủy: listConversations vẫn lỗi sau khôi phục; bỏ lượt quét, không coi là không có box.");
+        return;
+      }
+    }
   }
   blog(scanMode === "recent5"
     ? `Quét: ${conversations.length} box ${incremental ? "có hoạt động mới" : "gần nhất"} (bao gồm đã đọc/chưa đọc).`
