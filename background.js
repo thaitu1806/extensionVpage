@@ -3859,7 +3859,7 @@ function connectCommandSocket() {
         if (_socketHeartbeat) clearInterval(_socketHeartbeat);
         _socketHeartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) { try { ws.send(JSON.stringify({ type: "ping" })); } catch (_) {} } }, 20000);
       };
-      ws.onmessage = (event) => { let msg; try { msg = JSON.parse(event.data); } catch (_) { return; } if (msg.type === "command" && msg.command) processPushedCommand(msg.command); };
+      ws.onmessage = (event) => { let msg; try { msg = JSON.parse(event.data); } catch (e) { blog("Push: nhận WebSocket payload không phải JSON:", e.message); return; } if (msg.type === "command" && msg.command) { blog(`Push: WebSocket nhận command id=${msg.command.id || "(no-id)"}, type=${msg.command.type || "(no-type)"}, cid=${msg.command.cid || ""}, phone=${msg.command.phone || ""}.`); processPushedCommand(msg.command); } else if (msg.type !== "pong") { blog("Push: WebSocket nhận message không hỗ trợ:", msg.type || "(no-type)"); } };
       ws.onerror = () => blog("Push: WebSocket gặp lỗi.");
       ws.onclose = () => { if (_commandSocket === ws) _commandSocket = null; if (_socketHeartbeat) clearInterval(_socketHeartbeat); _socketHeartbeat = null; if (_socketReconnectTimer) clearTimeout(_socketReconnectTimer); _socketReconnectTimer = setTimeout(connectCommandSocket, 5000); blog("Push: WebSocket đóng; sẽ kết nối lại sau 5 giây."); };
     } catch (e) { blog("Push: lỗi tạo WebSocket:", e.message); _socketReconnectTimer = setTimeout(connectCommandSocket, 10000); }
@@ -3893,6 +3893,7 @@ async function processPushedCommand(cmd) {
     } else if (cmd.type === "fill") {
       const cfg = await chrome.storage.local.get({ autoFillEnabled: false });
       if (!cfg.autoFillEnabled) {
+        blog(`Push: command ${cmd.id} bị từ chối vì autoFillEnabled=false; gửi hướng dẫn /orders_on.`);
         await reportRemoteStatus(cmd.chatId, null, "⛔ Chưa bật nhận lệnh lên đơn. Gửi /orders_on để bật.");
       } else {
         const cid = String(cmd.cid || "").trim();
