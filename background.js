@@ -3314,7 +3314,7 @@ async function runScanCycle() {
       const fallbackUrl = v2ConversationUrl === "__V2_NO_CID__" ? "" : (v2ConversationUrl || `https://vpage.nhanh.vn/app/conversation?customerName=${encodeURIComponent(contact.phone)}`);
       const fallbackButtons = [];
       // V2 phải gửi CID qua Worker; chỉ V1 mới dùng SĐT.
-      const fallbackCid = String(v2ConversationUrl || "").match(/[?&]cid=(\\d+_\\d+)/)?.[1] || "";
+      const fallbackCid = String(v2ConversationUrl || "").match(/[?&]cid=(\d+_\d+)/)?.[1] || "";
       const fallbackIsV2 = v2ConversationUrl === "__V2_NO_CID__" || !!fallbackCid;
       if (cfg.workerUrl && fallbackCid) {
         fallbackButtons.push([{ text: "🧾 Lên đơn", callback_data: `fillcid:${fallbackCid}` }]);
@@ -3898,7 +3898,7 @@ async function processPushedCommand(cmd) {
         const cid = String(cmd.cid || "").trim();
         const phone = String(cmd.phone || "").trim();
         const useCid = /^\d+_\d+$/.test(cid);
-        if (!useCid && !/^\\d{6,15}$/.test(phone)) {
+        if (!useCid && !/^\d{6,15}$/.test(phone)) {
           throw new Error("Lệnh lên đơn thiếu CID V2 hợp lệ hoặc SĐT V1 hợp lệ.");
         }
         const targetLabel = useCid ? ("CID " + cid) : ("SĐT " + phone);
