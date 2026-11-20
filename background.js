@@ -3754,11 +3754,16 @@ async function fillOrderByCID(cid) {
     return res;
   } finally {
     await markConversationUnread(tab.id, conversation);
-    try {
-      await chrome.tabs.remove(tab.id);
-      blog(`AutoFill CID: đã đóng tab xử lý #${tab.id}.`);
-    } catch (e) {
-      blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
+    if (res?.submitted === true) {
+      try {
+        await chrome.tabs.remove(tab.id);
+        blog(`AutoFill CID: đơn đã lưu thành công, đóng tab xử lý #${tab.id}.`);
+      } catch (e) {
+        blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
+      }
+    } else {
+      // Giữ tab khi điền lỗi/chưa lưu để người dùng kiểm tra Suggest và form.
+      blog(`AutoFill CID: chưa xác nhận lưu đơn (submitted=${res?.submitted}); GIỮ tab #${tab.id} để kiểm tra, không đóng.`);
     }
   }
 }
@@ -3820,12 +3825,16 @@ async function fillOrderByPhone(phone) {
       blog("Unread: chưa xác định được conversation ID nên không gửi cập nhật.");
     }
 
-    // Không giữ tab để review: luôn tự đóng tab đơn sau khi xử lý xong.
-    try {
-      await chrome.tabs.remove(tab.id);
-      blog(`AutoFill webhook: luôn tự đóng tab đơn #${tab.id}; không giữ tab review.`);
-    } catch (e) {
-      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+    if (res?.submitted === true) {
+      try {
+        await chrome.tabs.remove(tab.id);
+        blog(`AutoFill webhook: đơn đã lưu thành công, đóng tab #${tab.id}.`);
+      } catch (e) {
+        blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+      }
+    } else {
+      // Lỗi Suggest/form hoặc chưa xác nhận lưu: giữ tab để kiểm tra thủ công.
+      blog(`AutoFill webhook: chưa xác nhận lưu đơn (submitted=${res?.submitted}); GIỮ tab #${tab.id} để review.`);
     }
   }
 }
