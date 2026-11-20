@@ -202,18 +202,29 @@ function readAllMessages() {
 
   for (const item of items) {
     const bubble = item.querySelector(".c-msg");
-    if (!bubble) continue;
+    const surface = item.querySelector(".message-surface");
+    if (!bubble && !surface) continue;
 
-    const role = bubble.classList.contains("right") ? "shop" : "customer";
+    // V2 xác định chiều gửi ngay trên message-surface (text-bubble-outgoing).
+    // V1 vẫn dùng class right trên .c-msg.
+    const isOutgoing = !!(
+      surface?.classList.contains("text-bubble-outgoing") ||
+      surface?.classList.contains("message-outgoing") ||
+      bubble?.classList.contains("right") ||
+      item.querySelector(".message-surface.text-bubble-outgoing")
+    );
+    const role = isOutgoing ? "shop" : "customer";
     const sender = textOf(item.querySelector(".msg-info-aside span.fw-semibold, b.n.copy")) || "";
     const time = textOf(item.querySelector(".msg-info-aside span.text-nowrap")) || "";
     const isAdPost = !!item.querySelector("app-post-layout");
-    // Dùng đúng text hiển thị trong bubble như BOX TEST đã xác minh.
-    // Bỏ item chỉ chứa menu thao tác của VPage (không phải nội dung chat).
-    const rawText = textOf(bubble);
-    const text = rawText || (isAdPost
+
+    // Ưu tiên nội dung raw của V2/V1 để không lẫn tên người gửi, thời gian
+    // và menu thao tác (Chọn tin nhắn/Ghim/Tải xuống) trong .c-msg.
+    const extractedText = extractItemText(item);
+    const fallbackText = textOf(bubble || surface);
+    const text = extractedText || (isAdPost
       ? textOf(item.querySelector(".post-content .txt p"))
-      : "");
+      : fallbackText);
 
     if (!text) continue;
     if (/Chọn tin nhắn/i.test(text) && /Sao chép/i.test(text) && /Ghim/i.test(text)) continue;
