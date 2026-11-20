@@ -2300,16 +2300,55 @@ function buildProductQueries(name, searchKeyword) {
   return queries.filter((q) => q && q.length >= 2);
 }
 
-// Gõ một chuỗi vào ô tìm và chờ danh sách gợi ý xuất hiện.
+// Gõ từ khóa và chờ Suggest thực sự tải xong.
+// Không click ngay khi vừa thấy một node: Angular có thể đang thay kết quả cũ bằng kết quả mới.
 async function typeAndWait(input, query) {
+  if (!input?.isConnected) return false;
   input.focus();
   input.dispatchEvent(new Event("focus", { bubbles: true }));
+
+  // Xóa query cũ trước, cho component một nhịp xóa danh sách gợi ý cũ.
   setNativeValue(input, "");
-  await sleep(150);
+  const clearStarted = Date.now();
+  while (Date.now() - clearStarted < 1000 && getSuggestionItems().length) {
+    await sleep(100);
+  }
+  await sleep(250);
+
   setNativeValue(input, query);
   input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "a" }));
   input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "a" }));
-  return waitForSuggestions(3000);
+
+  const started = Date.now();
+  const timeout = 8000;
+  const minWait = 500; // debounce/API tối thiểu trước khi chấp nhận kết quả
+  let lastFingerprint = "";
+  let stableReads = 0;
+  while (Date.now() - started < timeout) {
+    const currentValue = String(input.value || "").trim();
+    const items = getSuggestionItems();
+    const fingerprint = items.map((el) => normalize(suggestionName(el))).join("|");
+
+    if (currentValue === String(query).trim() && items.length && fingerprint) {
+      if (fingerprint === lastFingerprint) stableReads++;
+      else {
+        lastFingerprint = fingerprint;
+        stableReads = 1;
+      }
+      if (Date.now() - started >= minWait && stableReads >= 3) {
+        log(`typeAndWait: Suggest ổn định sau ${Date.now() - started}ms, ${items.length} kết quả cho "${query}".`);
+        return true;
+      }
+    } else {
+      lastFingerprint = "";
+      stableReads = 0;
+    }
+    await sleep(180);
+  }
+
+  const finalItems = getSuggestionItems();
+  log(`typeAndWait: timeout ${timeout}ms, query="${query}", input="${input.value}", gợi ý=${finalItems.length}; không click để tránh chọn nhầm.`);
+  return false;
 }
 
 function findProductSearchInput() {
