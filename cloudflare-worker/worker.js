@@ -152,7 +152,7 @@ export class CommandHub {
   if (url.pathname === "/enqueue" && request.method === "POST") {
    if (!this.env.PULL_SECRET || request.headers.get("x-internal-secret") !== this.env.PULL_SECRET) return json({ ok: false, error: "bad secret" }, 401);
    const cmd = await request.json().catch(() => null);
-   if (!cmd || !cmd.id || !cmd.type || (cmd.type === "fill" && !(/^\\d{6,15}$/.test(String(cmd.phone || "")) || /^\\d+_\\d+$/.test(String(cmd.cid || ""))))) return json({ ok: false, error: "invalid command" }, 400);
+   if (!cmd || !cmd.id || !cmd.type || (cmd.type === "fill" && !(/^\d{6,15}$/.test(String(cmd.phone || "")) || /^\d+_\d+$/.test(String(cmd.cid || ""))))) return json({ ok: false, error: "invalid command" }, 400);
    await this.state.storage.put("cmd:" + cmd.id, cmd);
    for (const ws of this.state.getWebSockets()) try { ws.send(JSON.stringify({ type: "command", command: cmd })); } catch (_) {}
    return json({ ok: true });
