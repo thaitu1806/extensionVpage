@@ -1935,7 +1935,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const tabId = Number(msg.tabId);
       if (!Number.isInteger(tabId)) throw new Error("tabId không hợp lệ.");
       const cfg = await chrome.storage.local.get({ tgMsgCount: 3, workerUrl: "", autoFillEnabled: false, autoOrderOnNotify: false, autoSubmitOrder: false });
-      const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
+      const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 20);
       blog("========== [VPage BOX TEST] BẮT ĐẦU ==========");
       blog(`[BOX TEST] tabId=${tabId}; lấy ${lastN} tin cuối; CHẾ ĐỘ CHỈ ĐỌC, không gửi Telegram/không tạo đơn/không lưu.`);
       // VPage có thể báo tab complete trước khi Angular/API tải xong nội dung hội thoại.
@@ -2921,7 +2921,7 @@ async function runScanCycle() {
   }
 
   // Số tin GẦN NHẤT cần đọc trong mỗi hội thoại (từ dưới lên). Mặc định 3.
-  const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 10);
+  const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 20);
 
   const tab = await findConversationTab();
   if (!tab) { blog("Quét: không có tab vpage mở -> bỏ qua."); return; }
