@@ -13,11 +13,11 @@ function normalizeTrackingText(value = "") {
     .replace(/\s+/g, " ").trim();
 }
 
-// Nhận diện template đơn Business Agent, kể cả dạng mỗi dòng sản phẩm không ghi SL
-// mà có giá ở cuối: "Tên sản phẩm - 73000 VND" (mặc định 1 x mỗi dòng).
+// Nhận diện template đơn Business Agent; chấp nhận nhãn Số điện thoại, Điện thoại hoặc SĐT.
+// Hỗ trợ cả dạng mỗi dòng sản phẩm không ghi SL mà có giá ở cuối (mặc định 1 x mỗi dòng).
 function isOrderTemplateMessage(value) {
   const text = String(value || "");
-  if (!/(Số điện thoại|Điện thoại)\s*:/i.test(text) ||
+  if (!/(Số điện thoại|Điện thoại|SĐT)\s*:/i.test(text) ||
       !/Sản ?phẩm\s*:/i.test(text)) return false;
 
   if ((/XÁC NHẬN ĐƠN HÀNG/i.test(text) || /Mã đơn hàng/i.test(text))) return true;
@@ -1971,9 +1971,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const trackingLink = /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(rawText);
         const trackingWords = ["theo doi van chuyen", "ma don hang", "thong bao tu bep", "tran trong"].filter(x => normalized.includes(x));
         const isTracking = trackingWords.length > 0 || trackingLink || /\btracking\b/i.test(rawText);
-        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-          || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại)/i.test(rawText))
-          || (/(Số điện thoại|Điện thoại)/i.test(rawText) && /Sản ?phẩm\s*:/i.test(rawText)
+        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(rawText) && /(Số điện thoại|Điện thoại|SĐT)/i.test(rawText))
+          || (/Mã đơn hàng/i.test(rawText) && /(Số điện thoại|Điện thoại|SĐT)/i.test(rawText))
+          || (/(Số điện thoại|Điện thoại|SĐT)/i.test(rawText) && /Sản ?phẩm\s*:/i.test(rawText)
             && (/\d+\s*x\s*\S/i.test(rawText) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(rawText)));
         blog(`[BOX TEST] #${index+1} role=${m?.role||"?"} tracking=${isTracking} [${trackingWords.join(",")}] link=${trackingLink} template=${isTemplate} text="${rawText.replace(/\s+/g," ").slice(0,500)}"`);
       });
@@ -1994,9 +1994,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const isTracking = n.includes("theo doi van chuyen") || n.includes("ma don hang")
           || n.includes("thong bao tu bep") || n.includes("tran trong") || /\btracking\b/i.test(t) || hasTrackingLink;
         if (isTracking) { latestOrderSignal = "tracking"; blog(`[BOX TEST] Duyệt ngược: gặp tin SHOP hậu xử lý tại index ${i+1}; DỪNG.`); break; }
-        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-          || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-          || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
+        const isTemplate = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t))
+          || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t))
+          || (/(Số điện thoại|Điện thoại|SĐT)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
             && (/\d+\s*x\s*\S/i.test(t) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t)));
         if (isTemplate) { latestOrderSignal = "template"; testOrderText = t; blog(`[BOX TEST] Duyệt ngược: gặp TEMPLATE tại index ${i+1}; DỪNG, dùng đúng raw text của tin này để parse.`); break; }
       }
@@ -2103,9 +2103,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             || n.includes("tran trong") || /\btracking\b/i.test(t)
             || /https?:\/\/(?:www\.)?nhanh\.vn\/tracking(?:[/?#]|$)/i.test(t);
           if (tracking) { signal = "tracking"; break; }
-          const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-            || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t))
-            || (/(Số điện thoại|Điện thoại)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
+          const template = (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t))
+            || (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t))
+            || (/(Số điện thoại|Điện thoại|SĐT)/i.test(t) && /Sản ?phẩm\s*:/i.test(t)
               && (/\d+\s*x\s*\S/i.test(t) || /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t)));
           if (template) { signal = "template"; break; }
         }
