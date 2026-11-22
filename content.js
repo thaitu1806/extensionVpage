@@ -247,21 +247,21 @@ function readAllMessages() {
 // Nhận 3 format:
 //  - "[XÁC NHẬN ĐƠN HÀNG ...]" (có SĐT + Sản phẩm)
 //  - "Em gửi đơn...: Mã đơn hàng ... Số điện thoại ..."
-//  - Khối tóm tắt của "Business Agent": "Tên người nhận: ... Số điện thoại: ...
-//    Sản Phẩm: N x ..." (KHÔNG có "XÁC NHẬN ĐƠN HÀNG" / "Mã đơn hàng").
+//  - Khối tóm tắt của "Business Agent": có SĐT + Sản phẩm (có thể không có tên người nhận,
+//    và địa chỉ có thể ghi "Địa chỉ" hoặc "Địa chỉ giao hàng").
 function isOrderConfirmation(t) {
   if (!t) return false;
-  if (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t)) return true;
-  if (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại)/i.test(t)) return true;
+  if (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t)) return true;
+  if (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t)) return true;
   // Khối tóm tắt Business Agent: cần có SĐT + nhãn "Sản phẩm" và dấu hiệu
   // sản phẩm. Hỗ trợ cả dòng thường "2 x ..." lẫn combo như
   // "Combo 3 túi ... 250g x 3 túi (750g)".
-  if (/(Số điện thoại|Điện thoại)/i.test(t) &&
+  if (/(Số điện thoại|Điện thoại|SĐT)/i.test(t) &&
       /Sản ?phẩm\s*:/i.test(t) &&
       (/\d+\s*x\s*\S/i.test(t) ||
        /\bcombo\s+\d+\s*(?:túi|goi|hộp|hop|combo|phần|phan)\b/i.test(t))) return true;
   // Business Agent có thể liệt kê từng sản phẩm kèm giá, không ghi số lượng.
-  if (/(Số điện thoại|Điện thoại)/i.test(t) &&
+  if (/(Số điện thoại|Điện thoại|SĐT)/i.test(t) &&
       /Sản ?phẩm\s*:/i.test(t) &&
       /(?:^|\n)\s*[^\n]{3,}\s[-–]\s*\d{4,}\s*(?:VND|VNĐ|đ)\b/im.test(t)) return true;
   return false;
