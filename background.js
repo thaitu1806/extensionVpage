@@ -339,7 +339,7 @@ function parseProductLines(block) {
   const isNonProductLine = (line) => {
     const value = String(line || "").trim().replace(/^[-–•]+\s*/, "");
     if (!value) return true;
-    return /^(?:tổng(?: tiền hàng| thanh toán)?|thành tiền|chiết khấu|giảm giá|phí vận chuyển|phí ship|vận chuyển|hình thức(?: vận chuyển| thanh toán)?|người nhận|tên người nhận|số điện thoại|điện thoại|địa chỉ|ghi chú|mã đơn hàng|payment|shipping|subtotal|total|discount)\s*[:：]/i.test(value);
+    return /^(?:tổng(?: tiền hàng| thanh toán)?|thành tiền|chiết khấu|giảm giá|phí vận chuyển|phí ship|vận chuyển|hình thức(?: vận chuyển| thanh toán)?|người nhận|tên người nhận|số điện thoại|điện thoại|địa chỉ(?: giao hàng)?|ghi chú|mã đơn hàng|payment|shipping|subtotal|total|discount)\s*[:：]/i.test(value);
   };
 
   normalizedBlock = normalizedBlock.split(/\r?\n/).filter((line) => !isNonProductLine(line)).map((line) => {
@@ -480,13 +480,14 @@ function parseOrderConfirmation(text, preferLastFields = false) {
   // Hỗ trợ cả 2 format: "[XÁC NHẬN ĐƠN HÀNG]" và "Em gửi đơn...".
   let t = text
     .replace(/\s*[-–]\s*(Số điện thoại)/gi, "\nSố điện thoại")
-    .replace(/\s*[-–]\s*(Địa chỉ)/gi, "\nĐịa chỉ")
+    .replace(/\s*[-–]\s*(Địa chỉ(?: giao hàng)?)/gi, "\n$1")
     .replace(/\s*[-–]\s*(Sản ?phẩm)/gi, "\nSản phẩm")
     .replace(/\s*[-–]\s*(Tổng tiền hàng|Tổng thanh toán|Chiết khấu|Phí vận chuyển)/gi, "\n$1")
     .replace(/\s*[-–]\s*(Hình thức thanh toán)/gi, "\nHình thức thanh toán")
     .replace(/Mã đơn hàng\s*:/i, "\nMã đơn hàng:")
     .replace(/Tên người nhận\s*:/i, "\nTên người nhận:")
     .replace(/Số điện thoại\s*:/i, "\nSố điện thoại:")
+    .replace(/Địa chỉ giao hàng\s*:/i, "\nĐịa chỉ:")
     .replace(/Địa chỉ\s*:/i, "\nĐịa chỉ:")
     .replace(/Sản ?[Pp]hẩm\s*:/i, "\nSản phẩm:")
     .replace(/Tổng tiền hàng\s*:/i, "\nTổng tiền hàng:")
@@ -553,6 +554,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
   const shippingFee = grabMoney("Phí vận chuyển:");
   const discount = grabMoney("Chiết khấu:");
   const totalCOD = grabMoney("Tổng:");
+  const paymentMethod = grab("Hình thức thanh toán:", STOPS);
   const rawNote = grab("Ghi chú:", STOPS);
   // "Không" nghĩa là khách không để lại ghi chú; không điền chữ này vào textarea.
   const note = /^không\s*[.!]?$/i.test(rawNote.trim()) ? "" : rawNote.trim();
@@ -570,6 +572,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
     shippingFee,
     discount,
     totalCOD,
+    paymentMethod,
     note,
     _source: "confirmation"
   };
