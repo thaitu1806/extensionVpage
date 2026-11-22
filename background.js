@@ -3766,19 +3766,21 @@ async function fillOrderByCID(cid) {
     }
     return res;
   } finally {
-    await markConversationUnread(tab.id, conversation);
-    if (res?.submitted === true) {
-      try {
-        await chrome.tabs.remove(tab.id);
-        blog(`AutoFill CID: đơn đã lưu thành công, đóng tab xử lý #${tab.id}.`);
-      } catch (e) {
-        blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
-      }
-    } else {
-      // Giữ tab khi điền lỗi/chưa lưu để người dùng kiểm tra Suggest và form.
-      blog(`AutoFill CID: chưa xác nhận lưu đơn (submitted=${res?.submitted}); GIỮ tab #${tab.id} để kiểm tra, không đóng.`);
+    // Luồng tự động: lỗi cập nhật Unread không được ngăn đóng tab.
+    try {
+      await markConversationUnread(tab.id, conversation);
+    } catch (e) {
+      blog(`AutoFill CID: cập nhật Unread thất bại trước khi đóng tab #${tab.id}: ${e?.message || e}`);
+    }
+    // Luồng tự động luôn đóng tab, dù lên đơn thành công hay thất bại.
+    try {
+      await chrome.tabs.remove(tab.id);
+      blog(`AutoFill CID: đã đóng tab xử lý #${tab.id} (submitted=${res?.submitted}; tự đóng bất kể kết quả).`);
+    } catch (e) {
+      blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
     }
   }
+
 }
 
 // Mở/điều hướng tab V1 tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
@@ -3831,25 +3833,25 @@ async function fillOrderByPhone(phone) {
     }
     return res;
   } finally {
-    // Cập nhật Unread ngay trước khi đóng tab; không dùng alert/confirm.
+    // Cập nhật Unread trước khi đóng; lỗi cập nhật không được chặn thao tác đóng tab.
     if (conversation) {
-      await markConversationUnread(tab.id, conversation);
-    } else {
-      blog("Unread: chưa xác định được conversation ID nên không gửi cập nhật.");
-    }
-
-    if (res?.submitted === true) {
       try {
-        await chrome.tabs.remove(tab.id);
-        blog(`AutoFill webhook: đơn đã lưu thành công, đóng tab #${tab.id}.`);
+        await markConversationUnread(tab.id, conversation);
       } catch (e) {
-        blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
+        blog(`AutoFill webhook: cập nhật Unread thất bại trước khi đóng tab #${tab.id}: ${e?.message || e}`);
       }
     } else {
-      // Lỗi Suggest/form hoặc chưa xác nhận lưu: giữ tab để kiểm tra thủ công.
-      blog(`AutoFill webhook: chưa xác nhận lưu đơn (submitted=${res?.submitted}); GIỮ tab #${tab.id} để review.`);
+      blog("Unread: chưa xác định được conversation ID nên bỏ qua cập nhật.");
+    }
+    // Luồng tự động luôn đóng tab, dù lên đơn thành công hay thất bại.
+    try {
+      await chrome.tabs.remove(tab.id);
+      blog(`AutoFill webhook: đã đóng tab #${tab.id} (submitted=${res?.submitted}; tự đóng bất kể kết quả).`);
+    } catch (e) {
+      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
     }
   }
+
 }
 
 /* ============== PUSH LỆNH QUA WEBSOCKET ============== */
