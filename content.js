@@ -1285,19 +1285,16 @@ function sameAdminUnit(a, b) {
 // -> "Thị trấn Lấp Vò, huyện Lấp Vò, tỉnh Đồng Tháp".
 function normalizeRegionText(value) {
   return String(value || "")
-    // Một số template dính phần nhãn tiếp theo vào cuối địa chỉ do thiếu
-    // xuống dòng chuẩn: "Phường 4, Thành phố Cà Mau\\n- Hình thức".
-    // Cắt từ dòng/nhãn tiếp theo, không để metadata lọt vào truy vấn địa giới.
-    .replace(/(?:\\r?\\n|\\s+-\\s*)(?:hình thức(?:\\s+vận chuyển|\\s+thanh toán)?|phương thức(?:\\s+vận chuyển|\\s+thanh toán)?|ghi chú|số điện thoại|điện thoại|người nhận|tổng(?: tiền hàng| thanh toán)?|chiết khấu|phí vận chuyển)\\b[\\s\\S]*$/i, "")
+    // Cắt phần nhãn/metadata bị dính sau địa chỉ, kể cả khi xuống dòng thật.
+    .replace(/(?:\r?\n|\s+-\s*)(?:hình thức(?:\s+vận chuyển|\s+thanh toán)?|phương thức(?:\s+vận chuyển|\s+thanh toán)?|ghi chú|số điện thoại|điện thoại|người nhận|tổng(?: tiền hàng| thanh toán)?|chiết khấu|phí vận chuyển)\b[\s\S]*$/i, "")
     // Chèn dấu phẩy trước cấp tỉnh/thành nếu người nhập viết liền sau huyện.
-    .replace(/\\s+(tỉnh|thành phố)\\s+/gi, ", $1 ")
-    .replace(/\\s+(tp\\.?)\\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
-    .replace(/\\s*,\\s*/g, ", ")
-    .replace(/[\\r\\n]+/g, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+(tỉnh|thành phố)\s+/gi, ", $1 ")
+    .replace(/\s+(tp\.?)\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
-
 function sameRegionSelection(currentText, targetText) {
   const currentParts = normalizeRegionText(currentText).split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
   const targetParts = normalizeRegionText(targetText).split(/[,，\n]/).map((s) => s.trim()).filter(Boolean);
