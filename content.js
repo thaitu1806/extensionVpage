@@ -1285,10 +1285,16 @@ function sameAdminUnit(a, b) {
 // -> "Thị trấn Lấp Vò, huyện Lấp Vò, tỉnh Đồng Tháp".
 function normalizeRegionText(value) {
   return String(value || "")
+    // Một số template dính phần nhãn tiếp theo vào cuối địa chỉ do thiếu
+    // xuống dòng chuẩn: "Phường 4, Thành phố Cà Mau\\n- Hình thức".
+    // Cắt từ dòng/nhãn tiếp theo, không để metadata lọt vào truy vấn địa giới.
+    .replace(/(?:\\r?\\n|\\s+-\\s*)(?:hình thức(?:\\s+vận chuyển|\\s+thanh toán)?|phương thức(?:\\s+vận chuyển|\\s+thanh toán)?|ghi chú|số điện thoại|điện thoại|người nhận|tổng(?: tiền hàng| thanh toán)?|chiết khấu|phí vận chuyển)\\b[\\s\\S]*$/i, "")
     // Chèn dấu phẩy trước cấp tỉnh/thành nếu người nhập viết liền sau huyện.
-    .replace(/\s+(tỉnh|thành phố)\s+/gi, ", $1 ")
-    .replace(/\s+(tp\.?)\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
-    .replace(/\s*,\s*/g, ", ")
+    .replace(/\\s+(tỉnh|thành phố)\\s+/gi, ", $1 ")
+    .replace(/\\s+(tp\\.?)\\s+(?=[A-Za-zÀ-ỹ])/gi, ", $1 ")
+    .replace(/\\s*,\\s*/g, ", ")
+    .replace(/[\\r\\n]+/g, " ")
+    .replace(/\\s+/g, " ")
     .trim();
 }
 
@@ -1670,7 +1676,10 @@ function buildRegionQueries(regionText) {
     // 2) Giữ loại Phường/Xã trong từ khóa để lọc đúng loại.
     queries.push(first);
     // 3) Dự phòng bỏ tiền tố của phường/xã.
-    if (firstName && firstName !== first) queries.push(firstName);
+    // Không bỏ "Phường" với phường đánh số (Phường 4 -> "4"): truy vấn
+    // chỉ còn số gây nhiều kết quả sai và tốn thêm một lượt chờ API.
+    const isNumberedWard = /^(?:phường|xã)\\s*\\d+$/i.test(first);
+    if (!isNumberedWard && firstName && firstName !== first) queries.push(firstName);
 
     // 4) Cụm dài nhưng tỉnh/thành đã được chuẩn hóa và bỏ tiền tố.
     queries.push(parts.join(", "));
