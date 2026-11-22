@@ -333,7 +333,16 @@ function parseProductLines(block) {
 
   // Chuẩn hóa số lượng dạng "N túi ..." và combo dạng "N Combo M túi ...".
   // Ví dụ: "3 Combo 3 túi Tên SP (9 túi)" -> "9 x Tên SP".
-  normalizedBlock = normalizedBlock.split(/\r?\n/).map((line) => {
+  // Bỏ các dòng thông tin tổng hợp/metadata bị đặt nhầm bên trong khối
+  // "Sản phẩm". Không giới hạn sản phẩm phải có trong CATALOG vì vẫn cần
+  // giữ tương thích với tên mới hoặc sản phẩm chưa khai báo catalog.
+  const isNonProductLine = (line) => {
+    const value = String(line || "").trim().replace(/^[-–•]+\s*/, "");
+    if (!value) return true;
+    return /^(?:tổng(?: tiền hàng| thanh toán)?|thành tiền|chiết khấu|giảm giá|phí vận chuyển|phí ship|vận chuyển|hình thức(?: vận chuyển| thanh toán)?|người nhận|tên người nhận|số điện thoại|điện thoại|địa chỉ|ghi chú|mã đơn hàng|payment|shipping|subtotal|total|discount)\s*[:：]/i.test(value);
+  };
+
+  normalizedBlock = normalizedBlock.split(/\r?\n/).filter((line) => !isNonProductLine(line)).map((line) => {
     const value = line.trim();
     if (!value) return line;
     if (/^\+?\s*\d+\s*[x*]\s*\S/i.test(value)) return line;
@@ -384,7 +393,10 @@ function parseProductLines(block) {
 
     // Bỏ dấu phẩy/chấm/chấm phẩy cuối dòng thừa.
     const name = rest.replace(/[.,;]\s*$/, "").trim();
-    if (name) products.push({ quantity: qty || 1, name, price, priceExplicit });
+    // Phòng trường hợp metadata xuất hiện cùng dòng với số lượng hoặc bị
+    // parser gom vào sau một sản phẩm hợp lệ.
+    if (!name || isNonProductLine(name)) continue;
+    products.push({ quantity: qty || 1, name, price, priceExplicit });
   }
   return products;
 }
@@ -470,13 +482,14 @@ function parseOrderConfirmation(text, preferLastFields = false) {
     .replace(/\s*[-–]\s*(Số điện thoại)/gi, "\nSố điện thoại")
     .replace(/\s*[-–]\s*(Địa chỉ)/gi, "\nĐịa chỉ")
     .replace(/\s*[-–]\s*(Sản ?phẩm)/gi, "\nSản phẩm")
-    .replace(/\s*[-–]\s*(Tổng thanh toán)/gi, "\nTổng thanh toán")
+    .replace(/\s*[-–]\s*(Tổng tiền hàng|Tổng thanh toán|Chiết khấu|Phí vận chuyển)/gi, "\n$1")
     .replace(/\s*[-–]\s*(Hình thức thanh toán)/gi, "\nHình thức thanh toán")
     .replace(/Mã đơn hàng\s*:/i, "\nMã đơn hàng:")
     .replace(/Tên người nhận\s*:/i, "\nTên người nhận:")
     .replace(/Số điện thoại\s*:/i, "\nSố điện thoại:")
     .replace(/Địa chỉ\s*:/i, "\nĐịa chỉ:")
     .replace(/Sản ?[Pp]hẩm\s*:/i, "\nSản phẩm:")
+    .replace(/Tổng tiền hàng\s*:/i, "\nTổng tiền hàng:")
     .replace(/Phí vận chuyển\s*:/i, "\nPhí vận chuyển:")
     .replace(/Chiết khấu\s*:/i, "\nChiết khấu:")
     .replace(/Tổng thanh toán\s*\(COD\)\s*:/i, "\nTổng:")
@@ -500,7 +513,7 @@ function parseOrderConfirmation(text, preferLastFields = false) {
   };
 
   const STOPS = ["Mã đơn hàng:", "Tên người nhận:", "Số điện thoại:", "Địa chỉ:",
-    "Sản phẩm:", "Phí vận chuyển:", "Chiết khấu:", "Tổng:",
+    "Sản phẩm:", "Tổng tiền hàng:", "Phí vận chuyển:", "Chiết khấu:", "Tổng:",
     "Hình thức thanh toán:", "Vận chuyển:", "Theo dõi vận chuyển:", "Ghi chú:"];
 
   const name = grab("Tên người nhận:", STOPS);
