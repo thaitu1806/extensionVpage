@@ -251,6 +251,8 @@ function readAllMessages() {
 //    và địa chỉ có thể ghi "Địa chỉ" hoặc "Địa chỉ giao hàng").
 function isOrderConfirmation(t) {
   if (!t) return false;
+  // Tin tổng kết/xác nhận có nhãn "Địa chỉ giao" không được chọn làm template đơn hàng.
+  if (/Địa chỉ\s+giao\b/i.test(t)) return false;
   if (/XÁC NHẬN ĐƠN HÀNG/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t)) return true;
   if (/Mã đơn hàng/i.test(t) && /(Số điện thoại|Điện thoại|SĐT)/i.test(t)) return true;
   // Khối tóm tắt Business Agent: cần có SĐT + nhãn "Sản phẩm" và dấu hiệu
