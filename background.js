@@ -17,6 +17,8 @@ function normalizeTrackingText(value = "") {
 // Hỗ trợ cả dạng mỗi dòng sản phẩm không ghi SL mà có giá ở cuối (mặc định 1 x mỗi dòng).
 function isOrderTemplateMessage(value) {
   const text = String(value || "");
+  // Tin xác nhận có nhãn "Địa chỉ giao" không phải template đặt hàng; bỏ qua hoàn toàn khi xét template.
+  if (/Địa chỉ\s+giao\b/i.test(text)) return false;
   if (!/(Số điện thoại|Điện thoại|SĐT)\s*:/i.test(text) ||
       !/Sản ?phẩm\s*:/i.test(text)) return false;
 
