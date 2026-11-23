@@ -37,23 +37,41 @@ function hasRecentTrackingInbox(messages) {
     .some((message) => normalizeTrackingText(typeof message === "string" ? message : (message?.text || "")).includes("theo doi van chuyen"));
 }
 
-// Dừng hoàn toàn thông báo Telegram và tự lên đơn nếu 3 tin cuối đã là tin hậu xử lý/CSKH.
-// Danh sách tin được trả theo thứ tự cũ -> mới, nên slice(-3) là 3 tin mới nhất từ dưới lên.
+// Chỉ dừng nếu dấu hiệu hậu xử lý/CSKH xuất hiện SAU template đơn hàng gần nhất.
+// Tin nhắn được sắp xếp cũ -> mới. Template mới hơn có nghĩa khách vừa gửi/chốt đơn mới,
+// không được để tin "đã giao thành công" ở ngay trước đó chặn nhầm đơn mới.
 function hasRecentStopPhrase(messages, count = 3) {
   const limit = Math.min(Math.max(parseInt(count, 10) || 3, 1), 50);
   const recent = (Array.isArray(messages) ? messages : []).slice(-limit);
   const stopPhrases = ["theo doi van chuyen", "ma don hang", "thong bao tu bep", "tran trong"];
-  // Chỉ cần có một dấu hiệu hậu xử lý trong cửa sổ tin gần nhất là dừng.
-  // Không để các câu CSKH như "đã lên đơn thành công" xuất hiện sau đó
-  // vô hiệu hóa dấu tracking của đơn đã tạo.
-  const matched = recent.find((message) => {
-    const text = normalizeTrackingText(typeof message === "string" ? message : (message?.text || ""));
-    return stopPhrases.some((phrase) => text.includes(phrase));
+  let lastStopIndex = -1;
+  let lastTemplateIndex = -1;
+  let lastStopText = "";
+
+  recent.forEach((message, index) => {
+    const raw = typeof message === "string" ? message : (message?.text || "");
+    const normalized = normalizeTrackingText(raw);
+
+    // Một tin có đủ cấu trúc template đặt hàng không được tự coi là tin hậu xử lý,
+    // kể cả khi trong nội dung có nhãn "Mã đơn hàng".
+    if (isOrderTemplateMessage(raw)) {
+      lastTemplateIndex = index;
+      return;
+    }
+
+    if (stopPhrases.some((phrase) => normalized.includes(phrase))) {
+      lastStopIndex = index;
+      lastStopText = raw;
+    }
   });
-  if (matched) {
-    const text = typeof matched === "string" ? matched : (matched?.text || "");
-    blog(`hasRecentStopPhrase: phát hiện dấu hiệu đã xử lý trong ${recent.length} tin gần nhất: "${String(text).slice(0, 180)}".`);
+
+  if (lastStopIndex >= 0 && lastStopIndex > lastTemplateIndex) {
+    blog(`hasRecentStopPhrase: phát hiện tin hậu xử lý mới hơn template trong ${recent.length} tin gần nhất: "${String(lastStopText).slice(0, 180)}".`);
     return true;
+  }
+
+  if (lastTemplateIndex >= 0 && lastStopIndex >= 0) {
+    blog(`hasRecentStopPhrase: bỏ qua dấu CSKH cũ vì có template đơn hàng mới hơn (stopIndex=${lastStopIndex}, templateIndex=${lastTemplateIndex}).`);
   }
   return false;
 }/* ============== PARSE KHỐI XÁC NHẬN ĐƠN ============== */
