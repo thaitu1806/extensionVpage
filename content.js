@@ -586,13 +586,14 @@ async function fillForm(data) {
         _regionSelectedFromUniqueSuggestion = false;
         okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
         verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        const geminiLevelVerified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
-        verified = okRegion && geminiLevelVerified && (
-          _regionSelectedFromUniqueSuggestion ||
-          sameRegionSelection(verifiedRegion, data.addressRegion) ||
-          sameRegionSelection(verifiedRegion, data.addressRegion2)
+        const geminiLevel3Verified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
+        const geminiLevel2Verified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion2);
+        const geminiMatch3 = geminiLevel3Verified && sameRegionSelection(verifiedRegion, data.addressRegion);
+        const geminiMatch2 = geminiLevel2Verified && sameRegionSelection(verifiedRegion, data.addressRegion2);
+        verified = okRegion && (
+          _regionSelectedFromUniqueSuggestion || geminiMatch3 || geminiMatch2
         );
-        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, đúngSốCấp=${geminiLevelVerified}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, đúng3Cấp=${geminiLevel3Verified}, đúng2Cấp=${geminiLevel2Verified}, khớp3Cấp=${geminiMatch3}, khớp2Cấp=${geminiMatch2}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
       }
 
       if (verified) done.push("tỉnh/xã");
@@ -1273,7 +1274,10 @@ function normalizeAdminName(value) {
     mot: "1", hai: "2", ba: "3", bon: "4", tu: "4",
     nam: "5", sau: "6", bay: "7", tam: "8", chin: "9", muoi: "10"
   };
-  return s.split(" ").map((word) => numberWords[word] || word).join(" ").replace(/\s+/g, " ").trim();
+  s = s.split(" ").map((word) => numberWords[word] || word).join(" ").replace(/\s+/g, " ").trim();
+  // Danh mục địa giới Nhanh.vn dùng "Qui Nhơn" (không phải "Quy Nhơn").
+  s = s.replace(/\bquy nhon\b/g, "qui nhon");
+  return s;
 }
 
 function sameAdminUnit(a, b) {
@@ -1423,22 +1427,30 @@ async function fillAddressRegion(region3, region2) {
   // cho phép fallback 2 cấp kể cả khi địa chỉ ban đầu được ép tìm 3 cấp.
   // Các trường hợp ép 3 cấp khác vẫn giữ nguyên hành vi cũ nếu không có dấu hiệu thiếu phường.
   const incompleteThreeLevelSelection = isIncompleteThreeLevelSelection(input, region3);
+  // Nếu 3 cấp không ra (kể cả trường hợp ép 3 cấp), luôn thử addressRegion2
+  // từ Gemini khi đó là cấu trúc 2 cấp hợp lệ thuộc danh sách 34 tỉnh/thành mới.
+  // Đây là fallback có xác minh, không tự suy diễn địa giới.
+  const parts2 = r2.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+  const validFallback2 = parts2.length === 2 && isKnownPostMergerProvince(parts2[1]);
   if (forceLevel3 && !incompleteThreeLevelSelection) {
-    log("fillAddressRegion: ÉP CẤP 3 -> không có dấu hiệu đã chọn thiếu phường; giữ nguyên chế độ 3 cấp.");
+    log("fillAddressRegion: 3 cấp không ra; không dừng sớm, kiểm tra addressRegion2 làm fallback.");
+  }
+
+  if (!validFallback2) {
+    log(`fillAddressRegion: không thử 2 cấp vì addressRegion2 không hợp lệ: "${r2}".`);
     return false;
   }
 
-  // Không ra hoặc kết quả 3 cấp bị thiếu phường -> BẬT 'Địa chỉ 2 cấp' + thử lại.
   log(incompleteThreeLevelSelection
-    ? "fillAddressRegion: kết quả 3 cấp thiếu phường -> BẬT 'Địa chỉ 2 cấp' để tìm lại."
-    : "fillAddressRegion: 3 cấp không ra -> BẬT 'Địa chỉ 2 cấp' (dự phòng).");
+    ? "fillAddressRegion: kết quả 3 cấp thiếu phường -> BẬT 'Địa chỉ 2 cấp' để thử addressRegion2."
+    : "fillAddressRegion: 3 cấp không ra -> BẬT 'Địa chỉ 2 cấp' để thử addressRegion2.");
   const toggled = await setTwoLevelAddress(true);
   if (toggled) {
     await sleep(3000); // chờ load lại sau khi đổi chế độ
     log("fillAddressRegion: click thật lại vào ô địa chỉ (sau khi bật 2 cấp).");
     await realClick(input);
     await sleep(500);
-    log(`fillAddressRegion: thử 2 cấp "${r2}"`);
+    log(`fillAddressRegion: thử addressRegion2 "${r2}"`);
     if (await tryPickRegion(input, r2)) return true;
   }
 
@@ -1600,6 +1612,8 @@ function buildRegionQueries(regionText) {
     .trim();
   const expandAdminAbbreviation = (value) => {
     let part = (value || "").trim();
+    // Masterdata địa giới cũ của Nhanh.vn lưu "Thành phố Qui Nhơn".
+    if (/^thành phố quy nhơn$/i.test(part)) return "Thành phố Qui Nhơn";
     // Chuẩn hóa bí danh TP.HCM trực tiếp về tên chuẩn mà Vpage sử dụng.
     if (/^tp\.?\s*(?:hcm|tphcm|hồ chí minh|ho chi minh|sài gòn|sai gon)$/i.test(part)) {
       return "Hồ Chí Minh";
