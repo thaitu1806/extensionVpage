@@ -2903,14 +2903,63 @@ function formatOrderForTelegram(parsed, conversationName, rawText, orderUrl) {
 
 // Chạy 1 lượt quét: mở LẦN LƯỢT các hội thoại CHƯA ĐỌC, nếu tin GẦN NHẤT bên
 // SHOP là khối đơn hàng thì gửi NỘI DUNG ĐẦY ĐỦ về Telegram (chống trùng theo SĐT).
+// Dấu vân tay đơn hàng: nhận diện cùng một đơn dù được gửi trong nhiều hội thoại/CID.
+function buildOrderFingerprint(parsed) {
+  if (!parsed || !parsed.phone) return "";
+  const phone = String(parsed.phone).replace(/\\D/g, "");
+  if (phone.length < 9) return "";
+
+  const products = (Array.isArray(parsed.products) ? parsed.products : [])
+    .map((p) => ({
+      name: normalizeTrackingText(p?.name || "").replace(/[^a-z0-9]+/g, " ").trim(),
+      quantity: Number(p?.quantity) || 0,
+      price: Number(p?.price) || 0
+    }))
+    .filter((p) => p.name && p.quantity > 0)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.quantity - b.quantity || a.price - b.price);
+
+  if (!products.length) return "";
+  const payload = JSON.stringify({
+    phone,
+    address: normalizeTrackingText([parsed.address, parsed.addressRegion].filter(Boolean).join(" ")).replace(/[^a-z0-9]+/g, " ").trim(),
+    products,
+    shippingFee: Number(parsed.shippingFee) || 0,
+    discount: Number(parsed.discount) || 0,
+    totalCOD: Number(parsed.totalCOD) || 0
+  });
+
+  // FNV-1a 32-bit; đủ gọn để dùng làm key trong chrome.storage.local.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i++) {
+    hash ^= payload.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return "orderfp:" + (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 async function processScanNotification(item, cfg, notified) {
+  const now = Date.now();
+  const ttl = 86400000;
+  if (item.key && notified[item.key] && now - notified[item.key] <= ttl) {
+    blog(`Chống trùng: bỏ qua box "${item.conversationName}" vì khóa hội thoại đã được thông báo trong 24 giờ.`);
+    return true;
+  }
+  if (item.fingerprintKey && notified[item.fingerprintKey] && now - notified[item.fingerprintKey] <= ttl) {
+    // Ghi nhận CID/box này đã được xét để không phải phân tích lại ở các lượt quét tiếp theo.
+    if (item.key) notified[item.key] = now;
+    await chrome.storage.local.set({ tgNotified: notified });
+    blog(`Chống trùng đơn: bỏ qua "${item.conversationName}" vì nội dung đơn trùng fingerprint "${item.fingerprintKey}" đã được thông báo lúc ${new Date(notified[item.fingerprintKey]).toLocaleString("vi-VN")}.`);
+    return true;
+  }
+
   const result = await tgSend(cfg.tgToken, cfg.tgChatId, item.text, item.markup);
   if (!result.ok) {
     blog(`Tuần tự: gửi Telegram lỗi cho "${item.conversationName}": ${result.error}; sẽ thử lại ở lượt quét sau.`);
     return false;
   }
 
-  notified[item.key] = Date.now();
+  notified[item.key] = now;
+  if (item.fingerprintKey) notified[item.fingerprintKey] = now;
   await chrome.storage.local.set({ tgNotified: notified });
   blog(`Tuần tự: đã gửi Telegram loại=${item.kind} cho "${item.conversationName}".`);
 
@@ -3414,6 +3463,7 @@ async function runScanCycle() {
     await processScanNotification({
       kind: "order",
       key: "order:" + (conv.id || conv.name || phone || Date.now()),
+      fingerprintKey: buildOrderFingerprint(parsed),
       text,
       markup,
       phone,
