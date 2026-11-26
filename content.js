@@ -580,20 +580,33 @@ async function fillForm(data) {
           throw new Error(`Gemini không xác minh được địa chỉ. ${gemini?.error || "Không có kết quả địa giới hợp lệ."} Dừng để tránh lưu sai địa chỉ.`);
         }
 
-        log(`Gemini đề xuất địa giới: 3 cấp="${gemini.addressRegion}", 2 cấp="${gemini.addressRegion2}". Thử chọn lại trên form.`);
+        log(`Gemini đề xuất địa giới: 3 cấp="${gemini.addressRegion}", 2 cấp="${gemini.addressRegion2}". Vì tra cứu 3 cấp trước đó không khớp, chuyển hẳn sang chế độ 2 cấp và chỉ dùng kết quả addressRegion2 của Gemini.`);
         data.addressRegion = gemini.addressRegion;
         data.addressRegion2 = gemini.addressRegion2;
+
+        const regionInput = findAddressRegionInput();
+        if (!regionInput) throw new Error("Không tìm thấy ô địa giới để thử kết quả 2 cấp từ Gemini.");
+
+        // Xóa lựa chọn/gợi ý 3 cấp cũ trước khi đổi chế độ.
+        setNativeValue(regionInput, "");
+        regionInput.dispatchEvent(new Event("input", { bubbles: true }));
         _regionSelectedFromUniqueSuggestion = false;
-        okRegion = await fillAddressRegion(data.addressRegion, data.addressRegion2);
-        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
-        const geminiLevel3Verified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion);
-        const geminiLevel2Verified = hasExpectedRegionLevel(findAddressRegionInput(), data.addressRegion2);
-        const geminiMatch3 = geminiLevel3Verified && sameRegionSelection(verifiedRegion, data.addressRegion);
-        const geminiMatch2 = geminiLevel2Verified && sameRegionSelection(verifiedRegion, data.addressRegion2);
-        verified = okRegion && (
-          _regionSelectedFromUniqueSuggestion || geminiMatch3 || geminiMatch2
-        );
-        log(`Kết quả chọn địa giới bằng dữ liệu Gemini: chọn=${okRegion}, đúng3Cấp=${geminiLevel3Verified}, đúng2Cấp=${geminiLevel2Verified}, khớp3Cấp=${geminiMatch3}, khớp2Cấp=${geminiMatch2}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
+
+        // BẮT BUỘC chuyển checkbox "Địa chỉ 2 cấp" sang ON trước khi tìm addressRegion2.
+        const switchedToLevel2 = await setTwoLevelAddress(true);
+        if (!switchedToLevel2) {
+          throw new Error("Không thể bật checkbox 'Địa chỉ 2 cấp' để thử địa chỉ 2 cấp do Gemini đề xuất.");
+        }
+        await sleep(3000);
+        log(`Gemini fallback: đã bật Địa chỉ 2 cấp; click lại ô địa giới và tìm "${gemini.addressRegion2}".`);
+        await realClick(regionInput);
+        await sleep(500);
+        okRegion = await tryPickRegion(regionInput, gemini.addressRegion2);
+        verifiedRegion = getRegionDisplayText(regionInput);
+        const geminiLevel2Verified = hasExpectedRegionLevel(regionInput, gemini.addressRegion2);
+        const geminiMatch2 = geminiLevel2Verified && sameRegionSelection(verifiedRegion, gemini.addressRegion2);
+        verified = okRegion && geminiLevel2Verified && geminiMatch2;
+        log(`Kết quả Gemini fallback 2 cấp: đãChuyểnToggle=${switchedToLevel2}, chọn=${okRegion}, đúng2Cấp=${geminiLevel2Verified}, khớpGemini2Cấp=${geminiMatch2}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
       }
 
       if (verified) done.push("tỉnh/xã");
