@@ -1499,8 +1499,12 @@ async function tryPickRegion(input, regionText) {
       // Nếu API chỉ trả đúng 1 gợi ý hợp lệ (không phải riêng tỉnh/thành),
       // pickBestRegion đã xác nhận đây là kết quả duy nhất: chọn luôn, không
       // bắt buộc placeholder phải hiển thị đủ 3 cấp như địa chỉ đầu vào.
-      if (items.length > 1 && isIncompleteThreeLevelSelection(input, regionText)) {
-        log("tryPickRegion: kết quả nhiều gợi ý nhưng đã chọn thiếu phường; thử biến thể query tiếp theo.");
+      if (isIncompleteThreeLevelSelection(input, regionText)) {
+        log(`tryPickRegion: kết quả ${items.length === 1 ? "duy nhất" : "nhiều gợi ý"} nhưng placeholder vẫn thiếu phường/không đủ 3 cấp; KHÔNG coi là thành công, xóa lựa chọn sai và thử biến thể query tiếp theo.`);
+        setNativeValue(input, "");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        _regionSelectedFromUniqueSuggestion = false;
+        await sleep(250);
         continue;
       }
       return true;
@@ -1509,8 +1513,12 @@ async function tryPickRegion(input, regionText) {
     await sleep(600);
     if (hasValue(input) || getRegionSuggestionItems().length === 0) {
       if (items.length === 1) _regionSelectedFromUniqueSuggestion = true;
-      if (items.length > 1 && isIncompleteThreeLevelSelection(input, regionText)) {
-        log("tryPickRegion: sau click dự phòng, kết quả nhiều gợi ý vẫn thiếu phường; thử biến thể query tiếp theo.");
+      if (isIncompleteThreeLevelSelection(input, regionText)) {
+        log("tryPickRegion: sau click dự phòng, placeholder vẫn thiếu phường/không đủ 3 cấp; xóa lựa chọn sai và thử biến thể query tiếp theo.");
+        setNativeValue(input, "");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        _regionSelectedFromUniqueSuggestion = false;
+        await sleep(250);
         continue;
       }
       return true;
