@@ -2245,7 +2245,7 @@ async function tgSend(token, chatId, text, replyMarkup) {
 }
 
 // Đảm bảo có một tab scanner Vpage riêng, không phụ thuộc tab người dùng.
- // ID được lưu trong storage để tái sử dụng sau khi service worker ngủ/khởi động lại.
+// ID được lưu trong storage để tái sử dụng sau khi service worker ngủ/khởi động lại.
 async function ensureScannerConversationTab() {
   const state = await chrome.storage.local.get({ vpageScannerTabId: 0 });
   const savedId = Number(state.vpageScannerTabId) || 0;
@@ -2285,8 +2285,8 @@ async function ensureScannerConversationTab() {
   await new Promise((resolve) => setTimeout(resolve, 3000));
   const readyTab = await chrome.tabs.get(created.id);
   if (readyTab.discarded || readyTab.status !== "complete") {
-    blog(`Tab scanner #${created.id} chưa sẵn sàng: status=${readyTab.status}, discarded=${!!readyTab.discarded}.`);
-    return readyTab;
+    blog(`Tab scanner #${created.id} chưa sẵn sàng: status=${readyTab.status}, discarded=${!!readyTab.discarded}; hoãn scan đến chu kỳ sau.`);
+    return null;
   }
   await restoreVpageContentScript(created.id);
   blog(`Tab scanner Vpage #${created.id} đã tải và content script sẵn sàng.`);
