@@ -580,33 +580,54 @@ async function fillForm(data) {
           throw new Error(`Gemini không xác minh được địa chỉ. ${gemini?.error || "Không có kết quả địa giới hợp lệ."} Dừng để tránh lưu sai địa chỉ.`);
         }
 
-        log(`Gemini đề xuất địa giới: 3 cấp="${gemini.addressRegion}", 2 cấp="${gemini.addressRegion2}". Vì tra cứu 3 cấp trước đó không khớp, chuyển hẳn sang chế độ 2 cấp và chỉ dùng kết quả addressRegion2 của Gemini.`);
+        log(`Gemini đề xuất địa giới: 3 cấp="${gemini.addressRegion}", 2 cấp="${gemini.addressRegion2}". Ưu tiên thử toàn bộ option của addressRegion trước; chỉ khi thất bại mới chuyển sang 2 cấp.`);
         data.addressRegion = gemini.addressRegion;
         data.addressRegion2 = gemini.addressRegion2;
 
-        const regionInput = findAddressRegionInput();
-        if (!regionInput) throw new Error("Không tìm thấy ô địa giới để thử kết quả 2 cấp từ Gemini.");
-
-        // Xóa lựa chọn/gợi ý 3 cấp cũ trước khi đổi chế độ.
-        setNativeValue(regionInput, "");
-        regionInput.dispatchEvent(new Event("input", { bubbles: true }));
+        // BƯỚC 1: giữ nguyên chế độ hiện tại (3 cấp), thử tất cả query/options
+        // được buildRegionQueries tạo ra cho addressRegion của Gemini.
+        const geminiRegionInput = findAddressRegionInput();
+        if (!geminiRegionInput) throw new Error("Không tìm thấy ô địa giới để thử addressRegion Gemini.");
+        setNativeValue(geminiRegionInput, "");
+        geminiRegionInput.dispatchEvent(new Event("input", { bubbles: true }));
         _regionSelectedFromUniqueSuggestion = false;
+        await sleep(300);
+        await realClick(geminiRegionInput);
+        await sleep(400);
+        okRegion = await fillAddressRegion(gemini.addressRegion, "");
+        verifiedRegion = getRegionDisplayText(findAddressRegionInput());
+        const geminiLevel3Verified = hasExpectedRegionLevel(findAddressRegionInput(), gemini.addressRegion);
+        verified = okRegion && geminiLevel3Verified && (
+          _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, gemini.addressRegion)
+        );
+        log(`Gemini addressRegion 3 cấp: chọn=${okRegion}, đúng3Cấp=${geminiLevel3Verified}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
 
-        // BẮT BUỘC chuyển checkbox "Địa chỉ 2 cấp" sang ON trước khi tìm addressRegion2.
-        const switchedToLevel2 = await setTwoLevelAddress(true);
-        if (!switchedToLevel2) {
-          throw new Error("Không thể bật checkbox 'Địa chỉ 2 cấp' để thử địa chỉ 2 cấp do Gemini đề xuất.");
+        // BƯỚC 2: chỉ khi tất cả option 3 cấp đều không chọn/xác minh được,
+        // mới bật checkbox 2 cấp và thử addressRegion2.
+        if (!verified) {
+          log("Tất cả option addressRegion 3 cấp của Gemini đều thất bại -> mới chuyển sang addressRegion2.");
+          const level2Input = findAddressRegionInput();
+          if (!level2Input) throw new Error("Không tìm thấy ô địa giới để thử addressRegion2 của Gemini.");
+          setNativeValue(level2Input, "");
+          level2Input.dispatchEvent(new Event("input", { bubbles: true }));
+          _regionSelectedFromUniqueSuggestion = false;
+
+          const switchedToLevel2 = await setTwoLevelAddress(true);
+          if (!switchedToLevel2) {
+            throw new Error("Không thể bật checkbox 'Địa chỉ 2 cấp' sau khi các option addressRegion 3 cấp đều thất bại.");
+          }
+          await sleep(3000);
+          log(`Gemini fallback: đã bật Địa chỉ 2 cấp; thử addressRegion2="${gemini.addressRegion2}".`);
+          await realClick(level2Input);
+          await sleep(500);
+          okRegion = await fillAddressRegion(gemini.addressRegion2, "");
+          verifiedRegion = getRegionDisplayText(level2Input);
+          const geminiLevel2Verified = hasExpectedRegionLevel(level2Input, gemini.addressRegion2);
+          verified = okRegion && geminiLevel2Verified && (
+            _regionSelectedFromUniqueSuggestion || sameRegionSelection(verifiedRegion, gemini.addressRegion2)
+          );
+          log(`Gemini addressRegion2: đãChuyểnToggle=${switchedToLevel2}, chọn=${okRegion}, đúng2Cấp=${geminiLevel2Verified}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
         }
-        await sleep(3000);
-        log(`Gemini fallback: đã bật Địa chỉ 2 cấp; click lại ô địa giới và tìm "${gemini.addressRegion2}".`);
-        await realClick(regionInput);
-        await sleep(500);
-        okRegion = await tryPickRegion(regionInput, gemini.addressRegion2);
-        verifiedRegion = getRegionDisplayText(regionInput);
-        const geminiLevel2Verified = hasExpectedRegionLevel(regionInput, gemini.addressRegion2);
-        const geminiMatch2 = geminiLevel2Verified && sameRegionSelection(verifiedRegion, gemini.addressRegion2);
-        verified = okRegion && geminiLevel2Verified && geminiMatch2;
-        log(`Kết quả Gemini fallback 2 cấp: đãChuyểnToggle=${switchedToLevel2}, chọn=${okRegion}, đúng2Cấp=${geminiLevel2Verified}, khớpGemini2Cấp=${geminiMatch2}, xác minh=${verified}, hiển thị="${verifiedRegion}"`);
       }
 
       if (verified) done.push("tỉnh/xã");
@@ -1565,88 +1586,57 @@ async function waitStableSuggestions(timeout = 8000) {
 
 // Tìm toggle "Địa chỉ 2 cấp": checkbox + label click được.
 function findTwoLevelToggle() {
-  const relevant = (el) => /địa\\s*chỉ\\s*2\\s*cấp/i.test(textOf(el));
-  const findControl = (root) => {
-    if (!root) return null;
-    return (root.matches?.("input[type='checkbox']") ? root : null)
-      || root.querySelector?.("input[type='checkbox']")
-      || root.querySelector?.("[role='checkbox']")
-      || root.querySelector?.("mat-checkbox, .mat-checkbox, .custom-checkbox")
-      || null;
-  };
-  const candidates = Array.from(document.querySelectorAll(
-    "label, span, div, p, mat-checkbox, app-checkbox, [role='checkbox']"
-  )).filter(el => relevant(el) && el.getClientRects().length > 0);
-
-  for (const textEl of candidates) {
-    let root = textEl;
-    for (let depth = 0; root && depth < 7; depth++, root = root.parentElement) {
-      const control = findControl(root);
-      if (!control) continue;
-      const input = control.matches?.("input[type='checkbox']")
-        ? control : control.querySelector?.("input[type='checkbox']");
-      const clickEl = input?.closest("label")
-        || control.closest?.("label")
-        || (control.matches?.("[role='checkbox'], mat-checkbox, .mat-checkbox, .custom-checkbox") ? control : null)
-        || textEl.closest("label") || textEl;
-      return { cb: input || control, clickEl, root };
-    }
+  // Tìm theo text "Địa chỉ 2 cấp" cả khi checkbox nằm ngoài label trong Angular.
+  const roots = Array.from(document.querySelectorAll("app-location-danymic, app-checkbox, label, .group_header, .form-group"));
+  for (const root of roots) {
+    if (!/địa chỉ 2 cấp/i.test(textOf(root))) continue;
+    const cb = root.matches("input[type='checkbox']")
+      ? root
+      : root.querySelector("input[type='checkbox']")
+        || root.parentElement?.querySelector("input[type='checkbox']")
+        || root.closest("app-checkbox")?.querySelector("input[type='checkbox']");
+    if (!cb) continue;
+    const clickEl = cb.closest("label") || root.querySelector("label") || root.closest("label") || cb.parentElement || root;
+    return { cb, clickEl };
   }
-
-  // Fallback chỉ trong component địa chỉ và chỉ khi component có nhãn phù hợp.
+  // Fallback có giới hạn trong component địa chỉ, không chọn checkbox bất kỳ của form.
   const component = document.querySelector("app-location-danymic");
-  if (component && relevant(component)) {
-    const control = findControl(component);
-    if (control) {
-      const input = control.matches?.("input[type='checkbox']")
-        ? control : control.querySelector?.("input[type='checkbox']");
-      return { cb: input || control, clickEl: input?.closest("label") || control, root: component };
-    }
+  if (component && /địa chỉ 2 cấp/i.test(textOf(component))) {
+    const cb = component.querySelector("input[type='checkbox']");
+    if (cb) return { cb, clickEl: cb.closest("label") || cb.parentElement || cb };
   }
   return null;
 }
 
+// Đặt toggle "Địa chỉ 2 cấp" về ĐÚNG trạng thái mong muốn bằng CLICK THẬT.
+// desiredOn = true  -> BẬT (địa chỉ 2 cấp)
+// desiredOn = false -> TẮT (địa chỉ 3 cấp)
+// Quan trọng: nhanh.vn GIỮ trạng thái toggle giữa các đơn, nên phải ép đúng
+// chế độ cho đơn hiện tại (bật nếu cần, TẮT nếu đang thừa). Trả true nếu
+// sau cùng toggle khớp desiredOn.
 async function setTwoLevelAddress(desiredOn) {
-  let toggle = findTwoLevelToggle();
-  if (!toggle) {
-    const labels = Array.from(document.querySelectorAll("label, span, div"))
-      .filter(el => /địa\\s*chỉ\\s*2\\s*cấp/i.test(textOf(el)) && el.getClientRects().length)
-      .slice(0, 3).map(el => el.outerHTML?.slice(0, 500));
-    log("setTwoLevelAddress: không tìm thấy control; các node có nhãn:", labels);
-    return false;
-  }
+  const t = findTwoLevelToggle();
+  if (!t || !t.cb) { log("setTwoLevelAddress: KHÔNG tìm thấy toggle."); return false; }
 
-  const readState = (control) => {
-    if (control?.matches?.("input[type='checkbox']")) return !!control.checked;
-    const aria = control?.getAttribute?.("aria-checked");
-    if (aria === "true" || aria === "false") return aria === "true";
-    return !!(control?.classList?.contains("checked")
-      || control?.classList?.contains("mat-checkbox-checked")
-      || control?.classList?.contains("mdc-checkbox--selected"));
-  };
-  const current = readState(toggle.cb);
-  log(`setTwoLevelAddress: tìm thấy control; hiện tại=${current}, yêu cầu=${desiredOn}; html=${toggle.cb.outerHTML?.slice(0, 700) || "(custom)"}`);
-  if (current === desiredOn) return true;
-
-  // Chỉ click một lần vào label/control; sau đó xác minh trạng thái Angular.
-  await realClick(toggle.clickEl || toggle.cb);
-  await sleep(900);
-  toggle = findTwoLevelToggle();
-  let actual = toggle ? readState(toggle.cb) : null;
-  if (actual === desiredOn) {
-    log(`setTwoLevelAddress: đã chuyển thành công sang ${desiredOn ? "2 cấp" : "3 cấp"}.`);
+  if (t.cb.checked === desiredOn) {
+    log(`setTwoLevelAddress: toggle đã đúng trạng thái (${desiredOn ? "BẬT" : "TẮT"}).`);
     return true;
   }
 
-  // Fallback click input thật nếu custom label không phát sinh thay đổi.
-  if (toggle?.cb?.matches?.("input[type='checkbox']")) {
-    await realClick(toggle.cb);
-    await sleep(900);
-    toggle = findTwoLevelToggle();
-    actual = toggle ? readState(toggle.cb) : null;
-    if (actual === desiredOn) return true;
+  // Click THẬT để đổi trạng thái; thử label rồi checkbox, tối đa 3 lần.
+  const targets = [t.clickEl, t.cb, t.clickEl].filter(Boolean);
+  for (let i = 0; i < targets.length; i++) {
+    log(`setTwoLevelAddress: click THẬT lần ${i + 1} để ${desiredOn ? "BẬT" : "TẮT"}.`);
+    await realClick(targets[i]);
+    await sleep(700);
+    const t2 = findTwoLevelToggle();
+    if (t2 && t2.cb && t2.cb.checked === desiredOn) {
+      log(`setTwoLevelAddress: ✅ đã ${desiredOn ? "BẬT" : "TẮT"}.`);
+      return true;
+    }
   }
-  log(`setTwoLevelAddress: không xác minh được trạng thái; actual=${actual}; DOM=${toggle?.root?.outerHTML?.slice(0, 1200) || "(not found)"}`);
+
+  log(`setTwoLevelAddress: ❌ chưa đặt được về ${desiredOn ? "BẬT" : "TẮT"}.`);
   return false;
 }
 
