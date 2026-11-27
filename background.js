@@ -333,27 +333,7 @@ function splitAddress(full) {
   if (idx === parts.length) idx = Math.max(1, parts.length - 3);
 
   const address = parts.slice(0, idx).join(", ").trim();
-  let regionParts = parts.slice(idx);
-
-  // Một số template lặp địa giới cũ thành một cụm không có dấu phẩy:
-  // "... xã bình hưng huyện bình chánh củ, Xã Bình Hưng, Huyện Bình Chánh, Hồ Chí Minh".
-  // Nếu phía sau đã có chuỗi hành chính tách cấp rõ ràng, bỏ cụm gộp/lỗi
-  // để không làm sai truy vấn chọn địa giới trên Nhanh.vn.
-  const structuredCount = regionParts.filter(part =>
-    /^(phường|xã|quận|huyện|thị trấn|thị xã|thành phố|tỉnh|tp\\.?)(?=\\s|$)/i.test(part)
-  ).length;
-  if (structuredCount >= 2) {
-    regionParts = regionParts.filter(part => {
-      const adminTokens = part.match(/(?:^|\\s)(?:phường|xã|quận|huyện|thị trấn|thị xã|thành phố|tỉnh)(?=\\s|$)/gi) || [];
-      if (adminTokens.length >= 2) {
-        blog(`Bỏ cụm địa giới gộp/lỗi "${part}" vì phía sau đã có địa giới tách cấp rõ ràng.`);
-        return false;
-      }
-      return true;
-    });
-  }
-
-  const addressRegion = regionParts.join(", ").trim();
+  const addressRegion = parts.slice(idx).join(", ").trim();
   return { address: address || full, addressRegion };
 }
 
