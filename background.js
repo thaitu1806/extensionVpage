@@ -2244,7 +2244,56 @@ async function tgSend(token, chatId, text, replyMarkup) {
   }
 }
 
-// Tìm tab conversation của vpage (để quét DOM hội thoại).
+// Đảm bảo có một tab scanner Vpage riêng, không phụ thuộc tab người dùng.
+ // ID được lưu trong storage để tái sử dụng sau khi service worker ngủ/khởi động lại.
+async function ensureScannerConversationTab() {
+  const state = await chrome.storage.local.get({ vpageScannerTabId: 0 });
+  const savedId = Number(state.vpageScannerTabId) || 0;
+
+  if (savedId) {
+    try {
+      const existing = await chrome.tabs.get(savedId);
+      const url = new URL(String(existing.url || ""));
+      const isConversation = url.hostname === "vpage.nhanh.vn" &&
+        (url.pathname === "/conversation" || url.pathname.startsWith("/conversation/"));
+      if (isConversation) {
+        try { await chrome.tabs.update(existing.id, { autoDiscardable: false }); } catch (_) {}
+        blog(`Dùng lại tab scanner Vpage #${existing.id}; status=${existing.status || "?"}, discarded=${!!existing.discarded}, active=${!!existing.active}.`);
+        return existing;
+      }
+      blog(`Tab scanner cũ #${savedId} không còn ở trang conversation; tạo tab scanner mới, không điều hướng tab cũ.`);
+    } catch (e) {
+      blog(`Tab scanner cũ #${savedId} không còn tồn tại: ${e?.message || e}; sẽ tạo tab mới.`);
+    }
+  }
+
+  // Không tái sử dụng tab Vpage đang mở của người dùng: scanner phải độc lập.
+  const scannerUrl = "https://vpage.nhanh.vn/conversation";
+  const created = await chrome.tabs.create({ url: scannerUrl, active: false });
+  if (!created?.id) throw new Error("Chrome không trả về ID của tab scanner Vpage.");
+
+  await chrome.storage.local.set({ vpageScannerTabId: created.id });
+  try { await chrome.tabs.update(created.id, { autoDiscardable: false }); } catch (_) {}
+
+  blog(`Đã tạo tab scanner Vpage riêng #${created.id} ở nền; chờ tải trang.`);
+  const loaded = await waitTabComplete(created.id, 60000);
+  if (!loaded) {
+    blog(`Tab scanner #${created.id} chưa complete sau 60 giây; giữ ID để thử lại chu kỳ sau.`);
+    return await chrome.tabs.get(created.id).catch(() => null);
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  const readyTab = await chrome.tabs.get(created.id);
+  if (readyTab.discarded || readyTab.status !== "complete") {
+    blog(`Tab scanner #${created.id} chưa sẵn sàng: status=${readyTab.status}, discarded=${!!readyTab.discarded}.`);
+    return readyTab;
+  }
+  await restoreVpageContentScript(created.id);
+  blog(`Tab scanner Vpage #${created.id} đã tải và content script sẵn sàng.`);
+  return readyTab;
+}
+
+// Tìm tab conversation của vpage (giữ lại để tương thích/debug; scan dùng scanner riêng).
 async function findConversationTab() {
   // Không phụ thuộc tab đang active (Gemini/Nhanh/website khác).
   // Ưu tiên đúng trang danh sách hội thoại, tránh chọn tab Vpage phụ hoặc tab cũ.
@@ -3008,18 +3057,28 @@ async function runScanCycle() {
   // Số tin GẦN NHẤT cần đọc trong mỗi hội thoại (từ dưới lên). Mặc định 3.
   const lastN = Math.min(Math.max(parseInt(cfg.tgMsgCount, 10) || 3, 1), 20);
 
-  const tab = await findConversationTab();
-  if (!tab) { blog("Quét: không có tab vpage mở -> bỏ qua."); return; }
+  // Dùng một tab scanner riêng, không phụ thuộc tab Vpage người dùng đang thao tác.
+  // Tab được tạo nền (active:false), lưu ID và tái sử dụng qua các chu kỳ scan.
+  const tab = await ensureScannerConversationTab();
+  if (!tab) {
+    blog("Quét hủy: không tạo/khôi phục được tab scanner Vpage; giữ nguyên checkpoint để thử lại chu kỳ sau.");
+    return;
+  }
 
-  // Chrome có thể discard tab Vpage đang nằm nền (Gemini vẫn là tab active).
-  // Khôi phục trước khi inject; tuyệt đối không chuyển focus sang Vpage.
+  // Không để Chrome tự động discard tab scanner nếu có thể.
+  try {
+    await chrome.tabs.update(tab.id, { autoDiscardable: false });
+  } catch (e) {
+    blog(`Không đặt được autoDiscardable=false cho scanner #${tab.id}: ${e?.message || e}`);
+  }
+
   if (tab.discarded || tab.status === "unloaded") {
     const recovered = await recoverConversationTab(
       tab.id,
-      `Chrome discard/unload tab (status=${tab.status || "?"}, discarded=${!!tab.discarded})`
+      `scanner tab bị discard/unload (status=${tab.status || "?"}, discarded=${!!tab.discarded})`
     );
     if (!recovered) {
-      blog("Quét hủy: không khôi phục được tab Vpage; giữ nguyên checkpoint để thử lại chu kỳ sau.");
+      blog("Quét hủy: không khôi phục được tab scanner Vpage; giữ nguyên checkpoint để thử lại chu kỳ sau.");
       return;
     }
   }
