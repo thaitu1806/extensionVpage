@@ -1565,57 +1565,88 @@ async function waitStableSuggestions(timeout = 8000) {
 
 // Tìm toggle "Địa chỉ 2 cấp": checkbox + label click được.
 function findTwoLevelToggle() {
-  // Tìm theo text "Địa chỉ 2 cấp" cả khi checkbox nằm ngoài label trong Angular.
-  const roots = Array.from(document.querySelectorAll("app-location-danymic, app-checkbox, label, .group_header, .form-group"));
-  for (const root of roots) {
-    if (!/địa chỉ 2 cấp/i.test(textOf(root))) continue;
-    const cb = root.matches("input[type='checkbox']")
-      ? root
-      : root.querySelector("input[type='checkbox']")
-        || root.parentElement?.querySelector("input[type='checkbox']")
-        || root.closest("app-checkbox")?.querySelector("input[type='checkbox']");
-    if (!cb) continue;
-    const clickEl = cb.closest("label") || root.querySelector("label") || root.closest("label") || cb.parentElement || root;
-    return { cb, clickEl };
+  const relevant = (el) => /địa\\s*chỉ\\s*2\\s*cấp/i.test(textOf(el));
+  const findControl = (root) => {
+    if (!root) return null;
+    return (root.matches?.("input[type='checkbox']") ? root : null)
+      || root.querySelector?.("input[type='checkbox']")
+      || root.querySelector?.("[role='checkbox']")
+      || root.querySelector?.("mat-checkbox, .mat-checkbox, .custom-checkbox")
+      || null;
+  };
+  const candidates = Array.from(document.querySelectorAll(
+    "label, span, div, p, mat-checkbox, app-checkbox, [role='checkbox']"
+  )).filter(el => relevant(el) && el.getClientRects().length > 0);
+
+  for (const textEl of candidates) {
+    let root = textEl;
+    for (let depth = 0; root && depth < 7; depth++, root = root.parentElement) {
+      const control = findControl(root);
+      if (!control) continue;
+      const input = control.matches?.("input[type='checkbox']")
+        ? control : control.querySelector?.("input[type='checkbox']");
+      const clickEl = input?.closest("label")
+        || control.closest?.("label")
+        || (control.matches?.("[role='checkbox'], mat-checkbox, .mat-checkbox, .custom-checkbox") ? control : null)
+        || textEl.closest("label") || textEl;
+      return { cb: input || control, clickEl, root };
+    }
   }
-  // Fallback có giới hạn trong component địa chỉ, không chọn checkbox bất kỳ của form.
+
+  // Fallback chỉ trong component địa chỉ và chỉ khi component có nhãn phù hợp.
   const component = document.querySelector("app-location-danymic");
-  if (component && /địa chỉ 2 cấp/i.test(textOf(component))) {
-    const cb = component.querySelector("input[type='checkbox']");
-    if (cb) return { cb, clickEl: cb.closest("label") || cb.parentElement || cb };
+  if (component && relevant(component)) {
+    const control = findControl(component);
+    if (control) {
+      const input = control.matches?.("input[type='checkbox']")
+        ? control : control.querySelector?.("input[type='checkbox']");
+      return { cb: input || control, clickEl: input?.closest("label") || control, root: component };
+    }
   }
   return null;
 }
 
-// Đặt toggle "Địa chỉ 2 cấp" về ĐÚNG trạng thái mong muốn bằng CLICK THẬT.
-// desiredOn = true  -> BẬT (địa chỉ 2 cấp)
-// desiredOn = false -> TẮT (địa chỉ 3 cấp)
-// Quan trọng: nhanh.vn GIỮ trạng thái toggle giữa các đơn, nên phải ép đúng
-// chế độ cho đơn hiện tại (bật nếu cần, TẮT nếu đang thừa). Trả true nếu
-// sau cùng toggle khớp desiredOn.
 async function setTwoLevelAddress(desiredOn) {
-  const t = findTwoLevelToggle();
-  if (!t || !t.cb) { log("setTwoLevelAddress: KHÔNG tìm thấy toggle."); return false; }
+  let toggle = findTwoLevelToggle();
+  if (!toggle) {
+    const labels = Array.from(document.querySelectorAll("label, span, div"))
+      .filter(el => /địa\\s*chỉ\\s*2\\s*cấp/i.test(textOf(el)) && el.getClientRects().length)
+      .slice(0, 3).map(el => el.outerHTML?.slice(0, 500));
+    log("setTwoLevelAddress: không tìm thấy control; các node có nhãn:", labels);
+    return false;
+  }
 
-  if (t.cb.checked === desiredOn) {
-    log(`setTwoLevelAddress: toggle đã đúng trạng thái (${desiredOn ? "BẬT" : "TẮT"}).`);
+  const readState = (control) => {
+    if (control?.matches?.("input[type='checkbox']")) return !!control.checked;
+    const aria = control?.getAttribute?.("aria-checked");
+    if (aria === "true" || aria === "false") return aria === "true";
+    return !!(control?.classList?.contains("checked")
+      || control?.classList?.contains("mat-checkbox-checked")
+      || control?.classList?.contains("mdc-checkbox--selected"));
+  };
+  const current = readState(toggle.cb);
+  log(`setTwoLevelAddress: tìm thấy control; hiện tại=${current}, yêu cầu=${desiredOn}; html=${toggle.cb.outerHTML?.slice(0, 700) || "(custom)"}`);
+  if (current === desiredOn) return true;
+
+  // Chỉ click một lần vào label/control; sau đó xác minh trạng thái Angular.
+  await realClick(toggle.clickEl || toggle.cb);
+  await sleep(900);
+  toggle = findTwoLevelToggle();
+  let actual = toggle ? readState(toggle.cb) : null;
+  if (actual === desiredOn) {
+    log(`setTwoLevelAddress: đã chuyển thành công sang ${desiredOn ? "2 cấp" : "3 cấp"}.`);
     return true;
   }
 
-  // Click THẬT để đổi trạng thái; thử label rồi checkbox, tối đa 3 lần.
-  const targets = [t.clickEl, t.cb, t.clickEl].filter(Boolean);
-  for (let i = 0; i < targets.length; i++) {
-    log(`setTwoLevelAddress: click THẬT lần ${i + 1} để ${desiredOn ? "BẬT" : "TẮT"}.`);
-    await realClick(targets[i]);
-    await sleep(700);
-    const t2 = findTwoLevelToggle();
-    if (t2 && t2.cb && t2.cb.checked === desiredOn) {
-      log(`setTwoLevelAddress: ✅ đã ${desiredOn ? "BẬT" : "TẮT"}.`);
-      return true;
-    }
+  // Fallback click input thật nếu custom label không phát sinh thay đổi.
+  if (toggle?.cb?.matches?.("input[type='checkbox']")) {
+    await realClick(toggle.cb);
+    await sleep(900);
+    toggle = findTwoLevelToggle();
+    actual = toggle ? readState(toggle.cb) : null;
+    if (actual === desiredOn) return true;
   }
-
-  log(`setTwoLevelAddress: ❌ chưa đặt được về ${desiredOn ? "BẬT" : "TẮT"}.`);
+  log(`setTwoLevelAddress: không xác minh được trạng thái; actual=${actual}; DOM=${toggle?.root?.outerHTML?.slice(0, 1200) || "(not found)"}`);
   return false;
 }
 
