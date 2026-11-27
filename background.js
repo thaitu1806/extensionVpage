@@ -2279,7 +2279,7 @@ async function ensureScannerConversationTab() {
   const loaded = await waitTabComplete(created.id, 60000);
   if (!loaded) {
     blog(`Tab scanner #${created.id} chưa complete sau 60 giây; giữ ID để thử lại chu kỳ sau.`);
-    return await chrome.tabs.get(created.id).catch(() => null);
+    return null;
   }
 
   await new Promise((resolve) => setTimeout(resolve, 3000));
