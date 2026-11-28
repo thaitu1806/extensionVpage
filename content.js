@@ -402,6 +402,38 @@ async function waitForOrderForm(timeout = 4000) {
   return hasOrderForm();
 }
 
+// Đóng thông báo đổi tên miền Nhanh POS nếu popup này xuất hiện trên form đơn hàng.
+async function closeNhanhDomainNoticeIfPresent() {
+  const closeButtons = Array.from(document.querySelectorAll('button.btn-close[aria-label="Close"]'))
+    .filter((el) => el.isConnected && el.getClientRects().length > 0);
+
+  for (const button of closeButtons) {
+    // Chỉ đóng đúng thông báo chuyển tên miền, không đóng các popup khác.
+    let container = button;
+    let matched = false;
+    for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
+      const content = textOf(container);
+      if (/Thông báo chuyển tên miền Nhanh\\s*POS/i.test(content)
+          && /pos\\.nhanh\\.vn/i.test(content)) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) continue;
+
+    log('Phát hiện thông báo chuyển tên miền Nhanh POS; click nút Close trước khi điền đơn.');
+    button.click();
+    await sleep(500);
+    if (!button.isConnected || button.getClientRects().length === 0) {
+      log('Đã đóng thông báo chuyển tên miền Nhanh POS.');
+    } else {
+      log('Đã click Close thông báo chuyển tên miền; tiếp tục kiểm tra form.');
+    }
+    return true;
+  }
+  return false;
+}
+
 // Chờ nút Lưu được enable sau khi Vpage tải xong dữ liệu (đặc biệt hãng vận chuyển).
 async function clickSaveButton(timeout = 45000) {
   const started = Date.now();
@@ -461,6 +493,9 @@ async function fillForm(data) {
     log("KẾT: frame này không có form đơn hàng.");
     return { filled: false, info: "Frame tạo đơn nhưng form chưa render." };
   }
+  // Thông báo đổi tên miền có thể che form và chặn thao tác; đóng trước khi điền.
+  await closeNhanhDomainNoticeIfPresent();
+
   // Mặc định KHÔNG bật "Tự vận chuyển": chỉ bật khi khách yêu cầu.
   // Ép về trạng thái bỏ chọn mỗi lần tự điền đơn để tránh kế thừa trạng thái cũ của form.
   const transformerCheckbox = document.querySelector('#useTransformer[type="checkbox"]');
