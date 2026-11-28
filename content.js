@@ -413,8 +413,8 @@ async function closeNhanhDomainNoticeIfPresent() {
     let matched = false;
     for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
       const content = textOf(container);
-      if (/Thông báo chuyển tên miền Nhanh\\s*POS/i.test(content)
-          && /pos\\.nhanh\\.vn/i.test(content)) {
+      if (/Thông báo chuyển tên miền Nhanh\s*POS/i.test(content)
+          && /pos\.nhanh\.vn/i.test(content)) {
         matched = true;
         break;
       }
