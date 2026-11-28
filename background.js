@@ -2989,13 +2989,9 @@ function buildOrderFingerprint(parsed) {
 async function processScanNotification(item, cfg, notified) {
   const now = Date.now();
   const ttl = 86400000;
-  if (item.key && notified[item.key] && now - notified[item.key] <= ttl) {
-    blog(`Chống trùng: bỏ qua box "${item.conversationName}" vì khóa hội thoại đã được thông báo trong 24 giờ.`);
-    return true;
-  }
+  // Không chặn theo khóa hội thoại 24 giờ: mỗi lần quét đủ điều kiện đều được gửi.
+  // Riêng fingerprint vẫn giữ để tránh gửi lặp cùng một nội dung đơn ở các box khác nhau.
   if (item.fingerprintKey && notified[item.fingerprintKey] && now - notified[item.fingerprintKey] <= ttl) {
-    // Ghi nhận CID/box này đã được xét để không phải phân tích lại ở các lượt quét tiếp theo.
-    if (item.key) notified[item.key] = now;
     await chrome.storage.local.set({ tgNotified: notified });
     blog(`Chống trùng đơn: bỏ qua "${item.conversationName}" vì nội dung đơn trùng fingerprint "${item.fingerprintKey}" đã được thông báo lúc ${new Date(notified[item.fingerprintKey]).toLocaleString("vi-VN")}.`);
     return true;
@@ -3007,7 +3003,6 @@ async function processScanNotification(item, cfg, notified) {
     return false;
   }
 
-  notified[item.key] = now;
   if (item.fingerprintKey) notified[item.fingerprintKey] = now;
   await chrome.storage.local.set({ tgNotified: notified });
   blog(`Tuần tự: đã gửi Telegram loại=${item.kind} cho "${item.conversationName}".`);
