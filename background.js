@@ -3840,6 +3840,30 @@ async function sendAutoOrderTrackingLink(conversationTabId) {
   return { ok: false, reason: result?.reason || "send-failed", orderId, trackingUrl };
 }
 
+// Cleanup tab đơn: cập nhật Unread chỉ là best-effort và không được phép giữ tab mở vô thời hạn.
+async function closeOrderProcessingTab(tabId, conversation, label, result) {
+  if (tabId == null) return;
+  let timeoutId = null;
+  try {
+    await Promise.race([
+      markConversationUnread(tabId, conversation),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("timeout sau 5 giây")), 5000);
+      })
+    ]);
+  } catch (e) {
+    blog(`${label}: cập nhật Unread thất bại/bị timeout trước khi đóng tab #${tabId}: ${e?.message || e}`);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+  try {
+    await chrome.tabs.remove(tabId);
+    blog(`${label}: đã đóng tab xử lý #${tabId} (submitted=${result?.submitted}; đóng bất kể kết quả).`);
+  } catch (e) {
+    if (!/No tab with id/i.test(e?.message || "")) blog(`${label}: không đóng được tab #${tabId}: ${e?.message || e}`);
+    else blog(`${label}: tab #${tabId} đã được đóng trước đó.`);
+  }
+}
 // Mở thẳng hội thoại V2 bằng CID composite rồi chạy đúng luồng AutoFill hiện tại.
 async function fillOrderByCID(cid) {
   const compositeCid = String(cid || "").trim();
@@ -3893,21 +3917,8 @@ async function fillOrderByCID(cid) {
     }
     return res;
   } finally {
-    // Luồng tự động: lỗi cập nhật Unread không được ngăn đóng tab.
-    try {
-      await markConversationUnread(tab.id, conversation);
-    } catch (e) {
-      blog(`AutoFill CID: cập nhật Unread thất bại trước khi đóng tab #${tab.id}: ${e?.message || e}`);
-    }
-    // Luồng tự động luôn đóng tab, dù lên đơn thành công hay thất bại.
-    try {
-      await chrome.tabs.remove(tab.id);
-      blog(`AutoFill CID: đã đóng tab xử lý #${tab.id} (submitted=${res?.submitted}; tự đóng bất kể kết quả).`);
-    } catch (e) {
-      blog(`AutoFill CID: không đóng được tab #${tab.id}: ${e.message}`);
-    }
+    await closeOrderProcessingTab(tab.id, conversation, "AutoFill CID", res);
   }
-
 }
 
 // Mở/điều hướng tab V1 tới hội thoại theo SĐT rồi chạy lên đơn (runFill).
@@ -3960,25 +3971,8 @@ async function fillOrderByPhone(phone) {
     }
     return res;
   } finally {
-    // Cập nhật Unread trước khi đóng; lỗi cập nhật không được chặn thao tác đóng tab.
-    if (conversation) {
-      try {
-        await markConversationUnread(tab.id, conversation);
-      } catch (e) {
-        blog(`AutoFill webhook: cập nhật Unread thất bại trước khi đóng tab #${tab.id}: ${e?.message || e}`);
-      }
-    } else {
-      blog("Unread: chưa xác định được conversation ID nên bỏ qua cập nhật.");
-    }
-    // Luồng tự động luôn đóng tab, dù lên đơn thành công hay thất bại.
-    try {
-      await chrome.tabs.remove(tab.id);
-      blog(`AutoFill webhook: đã đóng tab #${tab.id} (submitted=${res?.submitted}; tự đóng bất kể kết quả).`);
-    } catch (e) {
-      blog(`AutoFill webhook: không đóng được tab #${tab.id}: ${e.message}`);
-    }
+    await closeOrderProcessingTab(tab.id, conversation, "AutoFill webhook", res);
   }
-
 }
 
 /* ============== PUSH LỆNH QUA WEBSOCKET ============== */
@@ -4050,16 +4044,16 @@ async function processPushedCommand(cmd) {
           const result = useCid ? await fillOrderByCID(cid) : await fillOrderByPhone(phone);
           const failed = result?.ok === false || result?.filled === false || !!result?.error;
           const message = failed
-            ? "⚠️ Lệnh lên đơn chưa hoàn tất (" + targetLabel + "): " + String(result?.error || result?.summary || "Không điền được form.").slice(0, 500) + " Tab Vpage được giữ lại để kiểm tra."
+            ? "⚠️ Lệnh lên đơn chưa hoàn tất (" + targetLabel + "): " + String(result?.error || result?.summary || "Không điền được form.").slice(0, 500) + " Tab xử lý đã được tự động đóng."
             : result?.submitted
               ? "✅ Đã điền và gửi đơn (" + targetLabel + ")."
               : result?.reviewRequired
-                ? "📝 Đã điền form (" + targetLabel + ") nhưng CHƯA lưu. Tab Vpage được giữ lại để kiểm tra."
+                ? "📝 Đã điền form (" + targetLabel + ") nhưng CHƯA lưu. Tab xử lý đã được tự động đóng."
                 : "✅ Extension đã xử lý lệnh lên đơn (" + targetLabel + "). Hãy kiểm tra tab Vpage nếu cần.";
           await reportRemoteStatus(cmd.chatId, null, message);
         } catch (e) {
           blog(`Push: lên đơn lỗi cho ${targetLabel}: ${e.message}`);
-          await reportRemoteStatus(cmd.chatId, null, "❌ Lên đơn lỗi (" + targetLabel + "): " + e.message.slice(0, 500));
+          await reportRemoteStatus(cmd.chatId, null, "❌ Lên đơn lỗi (" + targetLabel + "): " + e.message.slice(0, 500) + " Tab xử lý sẽ tự động đóng.");
         }
       }
     } else {
