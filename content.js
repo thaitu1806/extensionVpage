@@ -336,6 +336,30 @@ function isOrderFrame() {
   return /crmadd/i.test(href) || hasOrderForm();
 }
 
+// Đóng nút Close của popup/thông báo xuất hiện khi mở tab Đơn hàng.
+// Không kiểm tra nội dung popup: chỉ cần có nút đóng hiển thị là click.
+async function closeVisibleNoticeCloseButtons(timeout = 5000) {
+  const started = Date.now();
+  const clickedButtons = new WeakSet();
+  let totalClosed = 0;
+
+  while (Date.now() - started < timeout) {
+    const buttons = Array.from(document.querySelectorAll('button.btn-close[aria-label="Close"]'))
+      .filter((el) => el.isConnected && el.getClientRects().length > 0 && !clickedButtons.has(el));
+
+    for (const button of buttons) {
+      clickedButtons.add(button);
+      button.click();
+      totalClosed++;
+      log('Đã click nút Close của popup/thông báo khi mở tab Đơn hàng.');
+    }
+    await sleep(200);
+  }
+
+  if (totalClosed) log(`Đã click đóng ${totalClosed} nút Close.`);
+  return totalClosed;
+}
+
 // Click riêng tab điều hướng "Đơn hàng" dạng Angular Material tab (mat-tab-label / role=tab).
 // Dùng khớp CHÍNH XÁC text để không nhầm với các mục menu khác.
 function clickOrderTabStrict() {
@@ -402,38 +426,6 @@ async function waitForOrderForm(timeout = 4000) {
   return hasOrderForm();
 }
 
-// Đóng thông báo đổi tên miền Nhanh POS nếu popup này xuất hiện trên form đơn hàng.
-async function closeNhanhDomainNoticeIfPresent() {
-  const closeButtons = Array.from(document.querySelectorAll('button.btn-close[aria-label="Close"]'))
-    .filter((el) => el.isConnected && el.getClientRects().length > 0);
-
-  for (const button of closeButtons) {
-    // Chỉ đóng đúng thông báo chuyển tên miền, không đóng các popup khác.
-    let container = button;
-    let matched = false;
-    for (let depth = 0; container && depth < 9; depth++, container = container.parentElement) {
-      const content = textOf(container);
-      if (/Thông báo chuyển tên miền Nhanh\s*POS/i.test(content)
-          && /pos\.nhanh\.vn/i.test(content)) {
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) continue;
-
-    log('Phát hiện thông báo chuyển tên miền Nhanh POS; click nút Close trước khi điền đơn.');
-    button.click();
-    await sleep(500);
-    if (!button.isConnected || button.getClientRects().length === 0) {
-      log('Đã đóng thông báo chuyển tên miền Nhanh POS.');
-    } else {
-      log('Đã click Close thông báo chuyển tên miền; tiếp tục kiểm tra form.');
-    }
-    return true;
-  }
-  return false;
-}
-
 // Chờ nút Lưu được enable sau khi Vpage tải xong dữ liệu (đặc biệt hãng vận chuyển).
 async function clickSaveButton(timeout = 45000) {
   const started = Date.now();
@@ -493,9 +485,6 @@ async function fillForm(data) {
     log("KẾT: frame này không có form đơn hàng.");
     return { filled: false, info: "Frame tạo đơn nhưng form chưa render." };
   }
-  // Thông báo đổi tên miền có thể che form và chặn thao tác; đóng trước khi điền.
-  await closeNhanhDomainNoticeIfPresent();
-
   // Mặc định KHÔNG bật "Tự vận chuyển": chỉ bật khi khách yêu cầu.
   // Ép về trạng thái bỏ chọn mỗi lần tự điền đơn để tránh kế thừa trạng thái cũ của form.
   const transformerCheckbox = document.querySelector('#useTransformer[type="checkbox"]');
@@ -2776,11 +2765,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
   if (msg?.type === "OPEN_ORDER_TAB") {
-    // Tab "Đơn hàng" (mat-tab-label) nằm ở trang chat để mở panel iframe tạo đơn.
-    // Cho phép click ở frame nào có đúng tab mat-tab-label này.
+    // Mở tab Đơn hàng rồi theo dõi vài giây để đóng mọi popup có nút Close.
     const clicked = clickOrderTabStrict();
-    sendResponse({ clicked });
-    return false;
+    closeVisibleNoticeCloseButtons(5000)
+      .then((closedCount) => sendResponse({ clicked, closedCount }))
+      .catch((e) => sendResponse({ clicked, error: e?.message || String(e) }));
+    return true;
   }
   if (msg?.type === "FILL_FORM") {
     const data = { ...(msg.data || {}), mode: msg.mode || msg.data?.mode || "manual" };
